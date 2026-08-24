@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ClipCache</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="/main.js" defer></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="toolbar">
+        <div class="brand">
+          <span class="brand-dot"></span>
+          <span>ClipCache</span>
+        </div>
+
+        <div class="search">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="M20 20l-3.5-3.5"></path>
+          </svg>
+          <input id="search" type="text" placeholder="搜索剪贴板…" spellcheck="false" autocomplete="off" />
+        </div>
+
+        <nav class="filters" id="filters">
+          <button class="filter active" data-kind="">全部</button>
+          <button class="filter" data-kind="text">文本</button>
+          <button class="filter" data-kind="html">富文本</button>
+          <button class="filter" data-kind="image">图片</button>
+        </nav>
+
+        <div class="actions">
+          <button id="clear-btn" class="icon-btn" title="清空全部">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+            </svg>
+          </button>
+          <button id="settings-btn" class="icon-btn" title="设置">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="win-controls">
+          <button id="win-min" class="win-btn" title="最小化">
+            <svg viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </button>
+          <button id="win-max" class="win-btn" title="最大化">
+            <svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+          </button>
+          <button id="win-close" class="win-btn win-close" title="关闭">
+            <svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="list-pane">
+          <div class="list" id="list"></div>
+          <div class="empty-state" id="empty-state">
+            <div class="empty-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 4h6M9 4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2M9 4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2"/>
+                <path d="M9 11h6M9 15h6"/>
+              </svg>
+            </div>
+            <p class="empty-title">还没有记录</p>
+            <p class="empty-hint">复制文字、图片或富文本，会自动出现在这里</p>
+          </div>
+        </section>
+
+        <section class="preview-pane">
+          <div class="preview-placeholder" id="preview-placeholder">
+            <div class="empty-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="M20 20l-3.5-3.5"></path>
+              </svg>
+            </div>
+            <p class="empty-title">选择一条记录查看详情</p>
+            <p class="empty-hint">双击任意记录即可复制回剪贴板</p>
+          </div>
+          <div class="preview-content hidden" id="preview-content">
+            <div class="preview-head">
+              <span class="type-badge" id="pv-type"></span>
+              <span class="preview-meta" id="pv-meta"></span>
+              <div class="preview-actions">
+                <button id="pv-pin" class="btn">置顶</button>
+                <button id="pv-copy" class="btn btn-primary">复制</button>
+                <button id="pv-delete" class="btn btn-danger">删除</button>
+              </div>
+            </div>
+            <div class="preview-body" id="pv-body"></div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="statusbar">
+        <span id="stats"></span>
+        <span class="status-hint">双击记录复制 · 过期记录自动清理</span>
+      </footer>
+    </div>
+
+    <!-- Settings modal -->
+    <div class="modal-overlay hidden" id="settings-modal">
+      <div class="modal">
+        <h2>设置</h2>
+        <div class="field">
+          <label for="set-retention">记录保留时间</label>
+          <select id="set-retention">
+            <option value="24">24 小时</option>
+            <option value="72">3 天</option>
+            <option value="168">7 天</option>
+            <option value="720">30 天</option>
+            <option value="forever">永久保留</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="set-max">最大记录数</label>
+          <input id="set-max" type="number" min="10" max="10000" step="1" />
+        </div>
+        <div class="field">
+          <label for="set-theme">主题</label>
+          <select id="set-theme">
+            <option value="system">跟随系统</option>
+            <option value="light">浅色</option>
+            <option value="dark">深色</option>
+          </select>
+        </div>
+        <div class="field field-check">
+          <input type="checkbox" id="set-apply" />
+          <label for="set-apply">同时应用到已有记录（从现在重新计时）</label>
+        </div>
+        <div class="field">
+          <label for="dbg-formats">调试：查看当前剪贴板格式（排查粘贴问题用）</label>
+          <button id="dbg-formats" class="btn">查看剪贴板格式</button>
+          <pre id="dbg-output" class="debug-output"></pre>
+        </div>
+        <div class="field">
+          <label>数据目录（记录与图片的存放位置）</label>
+          <div class="data-dir-row">
+            <code id="data-dir-path" class="data-dir-path">…</code>
+            <button id="open-data-dir" class="btn">打开目录</button>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" id="set-cancel">取消</button>
+          <button class="btn btn-primary" id="set-save">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast hidden" id="toast"></div>
+  </body>
+</html>
