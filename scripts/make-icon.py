@@ -1,6 +1,6 @@
 # 生成 app 图标：形状与顶栏 `.mark` / 空态 glyph 完全同源。
 #
-# 设计约束（对应 design/README.md 的改版说明）：
+# 设计约束（对应 design/README.md 的改版说明；design/ 是本地工作区、不入库）：
 #   - 形状 = 顶栏 24×24 glyph 本身：前面一张便签 rect(8,3,12,14,r2.5)，后面一张
 #     纸只露左、下两条边（M16 20.5H6.5A2.5 2.5 0 0 1 4 18V7）。不改成「两张完整
 #     便签叠放」——那会让图标和窗口里的 mark 长得不一样；
@@ -11,8 +11,8 @@
 #     glyph 单位只有 0.62px，线宽 2 单位 = 1.2px、两线间距 2 单位也是 1.2px，
 #     直接等比缩会糊成一团黑块。
 #
-# 用法：python design/make-icon.py            # 写 src-tauri/icons/*
-#       python design/make-icon.py --sheet    # 只重出 design/shots/icon-sheet.png
+# 用法：python scripts/make-icon.py            # 写 src-tauri/icons/*
+#       python scripts/make-icon.py --sheet    # 只重出 design/shots/icon-sheet.png（本地对照图）
 from __future__ import annotations
 
 import math
@@ -25,6 +25,7 @@ from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parent.parent
 ICONS = ROOT / "src-tauri" / "icons"
+# 尺寸对照图只进本地设计工作区（design/ 不入库），别的地方不需要它
 SHOTS = ROOT / "design" / "shots"
 
 INK = (27, 26, 23, 255)       # --ink     #1b1a17

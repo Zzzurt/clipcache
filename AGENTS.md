@@ -14,7 +14,7 @@ Windows 剪贴板管理器。Tauri 2 + 原生 HTML/CSS/JS，无框架、无构�
    - 大体积二进制、截图副本、重复文件 → 先确认是否真被引用；重复的删掉，只留一份
    - 只有源码、测试、文档、以及**文档真正引用的**资产才入库
 3. `git check-ignore -v <path>` 验证新规则确实生效；再看 `git status --short` 是否已干净。
-4. 用 `git ls-tree -r -l HEAD` 或按目录统计体积，确认没有意外膨胀（当前基线：约 59 个文件 / 4.4 MB）。
+4. 用 `git ls-tree -r -l HEAD` 或按目录统计体积，确认没有意外膨胀（当前基线：约 47 个文件 / 3.1 MB，其中 `docs/shots/` 占 2.6 MB）。
 5. 推送前跑一遍真正的门禁（见下）。**任何一步红都不许推。**
 
 只在 `.gitignore` 里加规则不够——如果文件此前已被跟踪，必须 `git rm --cached` 才会真正脱管。
@@ -24,8 +24,8 @@ Windows 剪贴板管理器。Tauri 2 + 原生 HTML/CSS/JS，无框架、无构�
 改动 `src/` 后至少跑：
 
 ```powershell
-node design/check.mjs       # DOM id 与 main.js 的一致性、CSS 未定义 class
-node design/linkcheck.mjs   # README 里的相对链接是否都存在
+node scripts/check.mjs      # DOM id 与 main.js 的一致性、CSS 未定义 class
+node scripts/linkcheck.mjs  # README 里的相对链接是否都存在
 cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
@@ -35,9 +35,9 @@ CI（`.github/workflows/ci.yml`）跑的就是这三条 cargo 命令，本地红
 
 ## 已入库 / 不入库的边界
 
-- **入库**：`src/`、`src-tauri/src`、`docs/shots/`（README 与 release notes 引用的截图）、`design/` 下的脚本。
-- **不入库**：`design/mock/{before,live}.html`、`design/mock/legacy-styles.css`（由 `design/build-*.mjs` 从 `src/` + git 历史生成）、`/docs/0*.md` 与 `/docs/README.md`（本地设计笔记）、各类缓存与 profile。
-- 新增文件前先问：它能不能由仓库里已有的东西重新算出来？能 → 别提交。
+- **入库**：`src/`、`src-tauri/src`、`scripts/`（`check.mjs`、`linkcheck.mjs`、`make-icon.py`）、`docs/shots/`（README 引用的截图）。
+- **不入库**：整个 `design/`（本地设计工作区：决策记录、设计稿原型、截图工具、前后对照图）、`/docs/0*.md` 与 `/docs/README.md`（本地设计笔记）、各类缓存与 profile。它们留在磁盘上，只是不进 git。
+- 新增文件前先问：它能不能由仓库里已有的东西重新算出来？能 → 别提交。另外问一句：它只对我或 AI 有用，还是对任何克隆仓库的人都有用？前者放 `design/`，后者才入库。
 
 ## 构建
 

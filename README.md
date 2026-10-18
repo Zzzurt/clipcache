@@ -48,7 +48,7 @@ Windows 剪贴板管理器：自动记录复制的文字、图片与富文本，
   <img src="docs/shots/before-after-dark.png" alt="深色主题改版前后对比">
 </p>
 
-去掉了蓝色主色与卡片阴影，改用暖中性纸底、发丝线分层，全站只保留一种彩色（赤陶橙）用于选中与强调；预览正文收进居中的阅读栏。设计决策与色板见 [design/](design/README.md)。
+去掉了蓝色主色与卡片阴影，改用暖中性纸底、发丝线分层，全站只保留一种彩色（赤陶橙）用于选中与强调；预览正文收进居中的阅读栏。
 
 </details>
 
@@ -110,7 +110,13 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
 两个写真实系统剪贴板的测试默认标记为 `#[ignore]`，需要时用 `cargo test -- --ignored` 运行。
 
-界面改版的设计稿、颜色令牌与截图脚本在 [design/](design/README.md)。
+前端一致性检查与应用图标生成在 `scripts/`：
+
+```bash
+node scripts/check.mjs        # DOM id / main.js / CSS class 一致性
+node scripts/linkcheck.mjs    # 文档里的相对链接是否都存在
+python scripts/make-icon.py   # 重出 src-tauri/icons/*（需要 Pillow）
+```
 
 ## 许可证
 
