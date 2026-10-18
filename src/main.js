@@ -258,6 +258,183 @@ async function selectClip(id) {
   renderDetail(d);
 }
 
+// ---------------- rich text colours ----------------
+// Copied HTML carries the palette of the page it came from. Text copied from a
+// dark site keeps near-white `color` declarations, which land on the light
+// preview surface and become unreadable; the reverse happens in dark mode.
+// Trusting the paste is not an option, and neither is stripping all colour —
+// links, quoted blocks and highlights are what make a paste recognisable.
+//
+// So the preview is normalised against the app's own surface:
+//   * page-scale fills (near-black, near-white) are dropped. They are the
+//     source site's background, painted on elements that the browser renders
+//     as inline boxes, so in any case they never painted the block the user
+//     expects — all they do here is fake a dark canvas that does not exist.
+//   * mid-tone fills and images are kept: those are real content.
+//   * every text colour is then checked against the fill it actually sits on
+//     and replaced by a readable theme ink when it fails.
+const COLOUR_PROBE = document.createElement("canvas").getContext("2d");
+const MIN_PREVIEW_CONTRAST = 3;
+// Below/above this luminance a fill reads as "page background", not content.
+const PAGE_FILL_DARK = 0.1;
+const PAGE_FILL_LIGHT = 0.9;
+const LIGHT_INK = "#f4f2ed";
+
+function parseColour(value) {
+  if (!value) return null;
+  const text = value.replace(/!important/i, "").trim();
+  if (!text || /^(inherit|initial|unset|revert|currentcolor)$/i.test(text)) {
+    return null;
+  }
+  // The canvas is the only cheap way to normalise every CSS colour syntax
+  // (named, hex, rgb(), hsl(), color-mix()) into channels. A sentinel detects
+  // values the browser refused to parse.
+  COLOUR_PROBE.fillStyle = "#010203";
+  COLOUR_PROBE.fillStyle = text;
+  const normalised = COLOUR_PROBE.fillStyle;
+  if (normalised === "#010203" && text.toLowerCase() !== "#010203") return null;
+  const hex = normalised.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (hex) {
+    return {
+      r: parseInt(hex[1], 16),
+      g: parseInt(hex[2], 16),
+      b: parseInt(hex[3], 16),
+      a: 1,
+    };
+  }
+  const parts = normalised.match(/rgba?\(([^)]+)\)/i);
+  if (!parts) return null;
+  const [r, g, b, a = 1] = parts[1].split(",").map((n) => parseFloat(n));
+  return { r, g, b, a };
+}
+
+function relativeLuminance({ r, g, b }) {
+  const channel = (v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+function contrastRatio(a, b) {
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+function readableOn(background, fallbackInk) {
+  const bgLum = relativeLuminance(background);
+  const ink = parseColour(fallbackInk) || { r: 27, g: 26, b: 23, a: 1 };
+  const light = parseColour(LIGHT_INK);
+  const useLight =
+    contrastRatio(relativeLuminance(light), bgLum) >
+    contrastRatio(relativeLuminance(ink), bgLum);
+  return useLight ? LIGHT_INK : fallbackInk;
+}
+
+function isPageFill(colour) {
+  const lum = relativeLuminance(colour);
+  return lum < PAGE_FILL_DARK || lum > PAGE_FILL_LIGHT;
+}
+
+function sanitiseRichText(html, surfaceColour, inkColour) {
+  const surface = parseColour(surfaceColour);
+  if (!surface) return html;
+  const themeInk = inkColour || "#1b1a17";
+  // DOMParser builds an inert document: no scripts, no image loads.
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const body = doc.body;
+  // Effective fill and ink, resolved down the tree so every element is judged
+  // against what truly sits behind it. Iterating in document order guarantees
+  // an element's ancestors are already resolved.
+  const resolvedBg = new Map();
+  const resolvedInk = new Map();
+
+  const apply = (el) => {
+    const parent = el.parentElement;
+    const inheritedBg = (parent && resolvedBg.get(parent)) || surface;
+    const inheritedInk = (parent && resolvedInk.get(parent)) || themeInk;
+
+    const styleText = el.getAttribute("style");
+    if (!styleText) {
+      resolvedBg.set(el, inheritedBg);
+      resolvedInk.set(el, inheritedInk);
+      return;
+    }
+
+    const declarations = [];
+    let declaredBg = null;
+    let declaredInk = null;
+
+    for (const part of styleText.split(";")) {
+      const colon = part.indexOf(":");
+      if (colon < 0) continue;
+      const prop = part.slice(0, colon).trim().toLowerCase();
+      const value = part.slice(colon + 1).trim();
+      if (!prop || !value) continue;
+      if (prop === "background-color" || prop === "background") {
+        const colour = parseColour(value);
+        // A transparent fill is a reset — the paste deliberately removes the
+        // browser's default button/field chrome. Keep it, or that chrome comes
+        // back as grey boxes in the middle of the preview.
+        if (!colour) {
+          declarations.push(`${prop}: ${value}`);
+          continue;
+        }
+        if (colour.a < 0.5) {
+          declarations.push(`${prop}: ${value}`);
+          continue;
+        }
+        // A page-scale fill is the source site's canvas rather than content.
+        if (isPageFill(colour)) continue;
+        declaredBg = colour;
+      }
+      if (prop === "color") {
+        const colour = parseColour(value);
+        if (!colour) continue;
+        declaredInk = colour;
+      }
+      declarations.push(`${prop}: ${value}`);
+    }
+
+    const bg = declaredBg || inheritedBg;
+    // An element that declares a fill but no ink still inherits colour, so the
+    // inherited ink has to be re-checked against that fill.
+    const candidateInk = declaredInk || inheritedInk;
+    resolvedBg.set(el, bg);
+
+    const contrast = contrastRatio(
+      relativeLuminance(candidateInk),
+      relativeLuminance(bg)
+    );
+    if (contrast >= MIN_PREVIEW_CONTRAST) {
+      if (declaredInk) resolvedInk.set(el, declaredInk);
+      else resolvedInk.set(el, inheritedInk);
+    } else {
+      // This ink cannot be read on the fill it will sit on — either because the
+      // source page assumed a theme this preview does not have, or because a
+      // kept fill changed the backdrop. Replace it rather than let it vanish.
+      const fixed = readableOn(bg, themeInk);
+      const index = declarations.findIndex((d) => /^color\s*:/i.test(d));
+      if (index >= 0) declarations[index] = `color: ${fixed}`;
+      else declarations.push(`color: ${fixed}`);
+      resolvedInk.set(el, parseColour(fixed));
+    }
+
+    if (declarations.length) el.setAttribute("style", declarations.join("; "));
+    else el.removeAttribute("style");
+  };
+
+  apply(body);
+  for (const el of body.querySelectorAll("*")) apply(el);
+
+  // Pasted <style>/<link> blocks describe the source page's layout and theme
+  // and would fight the preview's own rules, so they are dropped. What remains
+  // is inline formatting, which is what the user actually copied.
+  for (const el of body.querySelectorAll("style, link, script, meta")) {
+    el.remove();
+  }
+  return body.innerHTML;
+}
+
 function renderDetail(d) {
   $("preview-placeholder").classList.add("hidden");
   $("preview-content").classList.remove("hidden");
@@ -299,10 +476,11 @@ function renderDetail(d) {
     const cs = getComputedStyle(document.documentElement);
     const fg = cs.getPropertyValue("--text").trim() || "#1c1f26";
     const bg = cs.getPropertyValue("--surface").trim() || "#ffffff";
+    const rich = sanitiseRichText(d.html, bg, fg);
     // The iframe is a separate document, so it does not inherit the app's
     // scrollbar styling either; without this its scrollbar renders as the
     // platform default and looks bolted on next to the rest of the UI.
-    const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${previewCsp}"><style>html,body{background:${bg};}body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.6;margin:0;padding:16px;color:${fg};word-break:break-word;}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background-color:color-mix(in srgb,${fg} 22%,transparent);border:3px solid transparent;border-radius:8px;background-clip:content-box}::-webkit-scrollbar-thumb:hover{background-color:color-mix(in srgb,${fg} 36%,transparent);background-clip:content-box}::-webkit-scrollbar-track{background:transparent}</style></head><body>${d.html}</body></html>`;
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${previewCsp}"><style>html,body{background:${bg};}body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.6;margin:0;padding:16px;color:${fg};word-break:break-word;}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background-color:color-mix(in srgb,${fg} 22%,transparent);border:3px solid transparent;border-radius:8px;background-clip:content-box}::-webkit-scrollbar-thumb:hover{background-color:color-mix(in srgb,${fg} 36%,transparent);background-clip:content-box}::-webkit-scrollbar-track{background:transparent}</style></head><body>${rich}</body></html>`;
     iframe.srcdoc = doc;
     body.appendChild(iframe);
   } else if (d.text) {

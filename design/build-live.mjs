@@ -1,9 +1,29 @@
 // Builds design/mock/live.html: the real src/index.html + real src/main.js,
 // with window.__TAURI__ stubbed so the UI renders headless for screenshots.
+//
+// Set CC_HTML_CLIP=<id> to use a real record from the app's own clips.json as
+// the rich-text entry. That is how pasted-page colours get exercised without
+// touching the user's data: the fixture is read, never written.
 import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const root = new URL("../src/", import.meta.url);
 const html = readFileSync(new URL("index.html", root), "utf8");
+
+const realId = process.env.CC_HTML_CLIP;
+let realHtml = "";
+let realPreview = "";
+let realApp = "";
+if (realId) {
+  const file = join(process.env.APPDATA, "com.clipcache.app", "clips.json");
+  const clip = JSON.parse(readFileSync(file, "utf8")).find(
+    (c) => String(c.id) === String(realId)
+  );
+  if (!clip || !clip.html) throw new Error(`no html clip ${realId}`);
+  realHtml = clip.html;
+  realPreview = clip.preview || "";
+  realApp = clip.source_app || "";
+}
 
 const stub = `
 <script>
@@ -49,9 +69,9 @@ const stub = `
   };
   const handlers = {
     get_settings: () => ({ retention_hours: 168, max_clips: 500, theme: new URLSearchParams(location.search).get("theme") || "light" }),
-    list_clips: () => CLIPS,
+    list_clips: () => (window.__CC_EXTRA ? CLIPS.concat([window.__CC_EXTRA.clip]) : CLIPS),
     get_stats: () => ({ count: 6, total_bytes: 58160, image_count: 2 }),
-    get_clip: ({ id }) => DETAIL[id],
+    get_clip: ({ id }) => (window.__CC_OVERRIDE && window.__CC_OVERRIDE.id === id) ? window.__CC_OVERRIDE : DETAIL[id],
     get_thumb: ({ id }) => (id === 1 ? thumb("#7b8a6a", "#b98a5e", "#5c4a3d") : thumb("#4c5b6b", "#7d8f9c", "#2f3944")),
     get_data_dir: () => "%APPDATA%\\\\com.clipcache.app",
     get_clipboard_formats: () => { throw new Error("debug only"); },
@@ -76,10 +96,24 @@ const stub = `
 </script>
 `;
 
+// A real pasted page, when requested, is exposed to the stub through globals
+// rather than inlined into the handler, so the JSON stays out of the code path.
+const dataScript = realHtml
+  ? `<script>
+  (() => {
+    const id = 999;
+    window.__CC_EXTRA = {
+      clip: { id, kind: "html", preview: ${JSON.stringify(realPreview.slice(0, 60))}, created_at: Date.now() - 4 * 60000, source_app: ${JSON.stringify(realApp)}, pinned: true, byte_size: ${Buffer.byteLength(realHtml, "utf8")}, has_thumb: false },
+    };
+    window.__CC_OVERRIDE = { id, kind: "html", created_at: Date.now() - 4 * 60000, byte_size: ${Buffer.byteLength(realHtml, "utf8")}, source_app: ${JSON.stringify(realApp)}, pinned: true, html: ${JSON.stringify(realHtml)}, text: "" };
+  })();
+</script>`
+  : "";
+
 let out = html
   .replace('<link rel="stylesheet" href="styles.css" />', '<link rel="stylesheet" href="../../src/styles.css" />')
   .replace('<script type="module" src="/main.js" defer></script>',
-           stub + '\n    <script type="module" src="../../src/main.js"></script>');
+           stub + dataScript + '\n    <script type="module" src="../../src/main.js"></script>');
 
 // let the harness drive which record is selected
 out = out.replace("</body>", `<script>

@@ -49,9 +49,9 @@
   };
   const handlers = {
     get_settings: () => ({ retention_hours: 168, max_clips: 500, theme: new URLSearchParams(location.search).get("theme") || "light" }),
-    list_clips: () => CLIPS,
+    list_clips: () => (window.__CC_EXTRA ? CLIPS.concat([window.__CC_EXTRA.clip]) : CLIPS),
     get_stats: () => ({ count: 6, total_bytes: 58160, image_count: 2 }),
-    get_clip: ({ id }) => DETAIL[id],
+    get_clip: ({ id }) => (window.__CC_OVERRIDE && window.__CC_OVERRIDE.id === id) ? window.__CC_OVERRIDE : DETAIL[id],
     get_thumb: ({ id }) => (id === 1 ? thumb("#7b8a6a", "#b98a5e", "#5c4a3d") : thumb("#4c5b6b", "#7d8f9c", "#2f3944")),
     get_data_dir: () => "%APPDATA%\\com.clipcache.app",
     get_clipboard_formats: () => { throw new Error("debug only"); },

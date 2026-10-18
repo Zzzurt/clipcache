@@ -1,6 +1,6 @@
 # ClipCache 界面改版 · 设计稿 v1
 
-> **状态：已落地。** 变体 A（赤陶）已经写进 `src/index.html` / `src/styles.css`，`src/main.js` 只改了 3 行。
+> **状态：已落地。** 变体 A（赤陶）已经写进 `src/index.html` / `src/styles.css`，`src/main.js` 改了少量渲染分支（含富文本配色归一化）。
 > 这个目录保留完整的决策记录、旧版对照页和可重跑的出图脚本。
 
 ## 怎么看
@@ -46,7 +46,9 @@ node shot.mjs "mock/live.html?select=3" shots/live-light.png
 node check.mjs                          # 校验 id / class 覆盖
 ```
 
-> `shot.mjs` 带了 `--virtual-time-budget=2500`。去掉它，2s 轮询和异步 `invoke` 还没跑完就截图，预览区会是空的。
+> `shot.mjs` 带了 `--virtual-time-budget=8000`。去掉它，2s 轮询和异步 `invoke` 还没跑完就截图，预览区会是空的。这个值最初是 2500，但富文本 iframe 可能要到首次绘制之后才可见——同一个页面用 2500 拍出全白、用 8000 拍出正文，所以调大到 8000 才稳定。**预览区空白时先怀疑截图时机，别改渲染逻辑。**
+>
+> 想用真实剪贴记录调试配色，设 `CC_HTML_CLIP=<id>`（从 `%APPDATA%\com.clipcache.app\clips.json` 只读取第 id 条注入为 `?select=999` 的行）。它只读不写，也不会把内容写进 `live.html`。
 
 ## 驱动真实 exe 截图（CDP）
 
@@ -167,8 +169,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -File design\grab.ps1 -Row 2 -Out 
 
 - `src/index.html`：整文件重写，**所有元素 id 一个没动**。`.filters` 保留 `data-kind`；列表行从 `flex` 改成三列 `grid`；`.brand-dot` → `.mark` + `.wordmark`；状态栏右侧新增 `.hints`（纯 HTML，无 JS）；设置弹窗拆出 `.modal-head` / `.modal-body`，新增 `#set-close`。
 - `src/styles.css`：整文件重写（740 → 约 900 行），令牌、间距、发丝线、图标尺寸全部按本文档执行。`:root` 里保留了 `--text`（`#1b1a17`）作为 `--ink` 的别名——`main.js` 会用 `getPropertyValue("--text")` 给富文本沙箱 iframe 注入前景色，删掉它会白底黑字失效。
-- `src/main.js`：只加 3 行 —— `$("pv-type").dataset.kind = d.kind`、`icon.className` 追加 `is-html`、`$("set-close")` 绑 `closeSettings`。逻辑零改动。
+- `src/main.js`：三处小改（`$("pv-type").dataset.kind = d.kind`、`icon.className` 追加 `is-html`、`$("set-close")` 绑 `closeSettings`）之外，另加了富文本配色的 `sanitiseRichText()`（见下节）。
 - `docs/screenshot.png`：已用真实渲染的浅色截图替换（1000×700）。
+
+## 富文本配色归一化
+
+复制来的 HTML 带着来源页面的调色板。从深色站点复制的文字留着 `color: rgb(231,233,235)` 这样的近白声明，落在浅色预览底上几乎看不见；深色模式下反过来。
+
+处理方式（`src/main.js` 的 `sanitiseRichText`）：
+
+1. 用 `DOMParser` 建惰性文档（不执行脚本、不加载图片），按文档序 DFS，用两个 Map 记录每个元素的**实际底色与实际墨色**。
+2. `background-color` / `background`：解析不出颜色或 `alpha < 0.5` 时**原样保留**——`background: transparent` 是在清掉浏览器默认按钮底，删掉它灰色方块就冒出来了。近黑 / 近白（亮度 `< 0.1` 或 `> 0.9`）的画布填充丢弃；中间调与图片保留。自定义元素（`<bili-comment-thread-renderer>` 之类）默认是 inline，这类画布本来就没盖住块级子元素，留着只是伪造一个不存在的深色底。
+3. `color`：对文字实际所在底色算 WCAG 对比度，低于 3 才换成主题墨色（深底换 `#f4f2ed`，浅底换 `--text`）。链接、引用、高亮因此都保住了。
+4. 最后删掉 `style / link / script / meta`——来源页的版式会跟预览打架。
+
+这个逻辑用真实 `clips.json` 里的 B 站评论区整段（36 KB、43 处颜色声明）验证过浅深两色。
+
 
 ## 还没做的
 

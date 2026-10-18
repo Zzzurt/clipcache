@@ -1,5 +1,9 @@
 // Renders a local HTML file to PNG with headless Chrome.
 // usage: node shot.mjs <page> <out.png> [width] [height] [scale]
+//
+// The virtual time budget has to outlast the app's 2s clipboard poll plus the
+// async invoke round-trip; at 2500ms a rich-text iframe can be captured before
+// its first paint and come out blank. 8000ms is the low end that proved stable.
 import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,7 +30,7 @@ const args = [
   `--user-data-dir=${join(here, ".chrome-profile")}`,
   `--force-device-scale-factor=${scale}`,
   `--window-size=${w},${h}`,
-  "--virtual-time-budget=2500",
+  "--virtual-time-budget=8000",
   `--screenshot=${outAbs}`,
   "file:///" + pageAbs.replace(/\\/g, "/"),
 ];
