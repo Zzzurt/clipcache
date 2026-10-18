@@ -510,10 +510,7 @@ unsafe fn read_hdrop_paths() -> Option<Vec<std::path::PathBuf>> {
             if end == i {
                 break;
             }
-            let units: Vec<u16> = list[i..end]
-                .chunks_exact(2)
-                .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                .collect();
+            let units: Vec<u16> = utf16_le_units(&list[i..end]);
             paths.push(std::path::PathBuf::from(String::from_utf16_lossy(&units)));
             i = end + 2;
         }
@@ -724,10 +721,7 @@ fn embedded_image_to_png(html: &str) -> Option<(Vec<u8>, u32, u32)> {
 }
 
 fn utf16_to_string(bytes: &[u8]) -> String {
-    let mut units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
-        .collect();
+    let mut units = utf16_le_units(bytes);
     while units.last() == Some(&0) {
         units.pop();
     }
@@ -757,24 +751,40 @@ fn trim_nulls(mut b: &[u8]) -> &[u8] {
     b
 }
 
+/// Decode little-endian UTF-16 code units from raw bytes, ignoring a trailing
+/// odd byte. Written as `windows(2).step_by(2)` rather than the equivalent
+/// `chunks_exact(2)` because newer clippy releases (1.99+) reject a constant
+/// `chunks_exact` chunk size in favour of `as_chunks`, which is not stable on
+/// the toolchain this project builds with yet.
+fn utf16_le_units(bytes: &[u8]) -> Vec<u16> {
+    bytes
+        .windows(2)
+        .step_by(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect()
+}
+
+/// Same as [`utf16_le_units`] for big-endian input.
+fn utf16_be_units(bytes: &[u8]) -> Vec<u16> {
+    bytes
+        .windows(2)
+        .step_by(2)
+        .map(|c| u16::from_be_bytes([c[0], c[1]]))
+        .collect()
+}
+
 /// Decode a byte buffer that may be UTF-8, UTF-16 (with BOM), or system ANSI.
 fn decode_fragment(bytes: &[u8]) -> String {
     let b = trim_nulls(bytes);
     if b.starts_with(&[0xFF, 0xFE]) {
-        let mut units: Vec<u16> = b[2..]
-            .chunks_exact(2)
-            .map(|c| u16::from_le_bytes([c[0], c[1]]))
-            .collect();
+        let mut units = utf16_le_units(&b[2..]);
         while units.last() == Some(&0) {
             units.pop();
         }
         return String::from_utf16_lossy(&units);
     }
     if b.starts_with(&[0xFE, 0xFF]) {
-        let mut units: Vec<u16> = b[2..]
-            .chunks_exact(2)
-            .map(|c| u16::from_be_bytes([c[0], c[1]]))
-            .collect();
+        let mut units = utf16_be_units(&b[2..]);
         while units.last() == Some(&0) {
             units.pop();
         }
@@ -1056,6 +1066,21 @@ mod tests {
         let s = "中文测试 abc 123";
         let bytes = utf8_to_utf16_null(s);
         assert_eq!(utf16_to_string(&bytes), s);
+    }
+
+    #[test]
+    fn utf16_units_ignore_trailing_odd_byte() {
+        // "ab" in UTF-16LE, plus a stray byte that has no pair.
+        let bytes = [0x61, 0x00, 0x62, 0x00, 0x63];
+        assert_eq!(utf16_le_units(&bytes), vec![0x61, 0x62]);
+
+        // Big-endian likewise.
+        let be = [0x00, 0x61, 0x00, 0x62, 0x63];
+        assert_eq!(utf16_be_units(&be), vec![0x61, 0x62]);
+
+        // Empty and single-byte inputs must not panic.
+        assert!(utf16_le_units(&[]).is_empty());
+        assert!(utf16_le_units(&[0x41]).is_empty());
     }
 
     #[test]
