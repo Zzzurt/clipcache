@@ -497,7 +497,11 @@ body {
   min-height: 420px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  /* Follows the app theme; a hardcoded white box made light text from dark
+     sites (bilibili, GitHub dark, …) invisible. The iframe document itself
+     gets the same colour injected, so text without its own background reads. */
+  background: var(--surface);
+  color-scheme: normal;
 }
 
 .image-wrap {

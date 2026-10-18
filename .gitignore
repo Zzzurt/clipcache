@@ -31,5 +31,5 @@ dist-ssr
 # Dev-only local crates.io mirror (build-sandbox helper, not shipped)
 crates-mirror.js
 
-# Generated Code Wiki docs (not part of the shipped source)
-docs/
+# Build scratch used by local verification (never commit)
+.verify/

@@ -97,9 +97,25 @@ async function loadSettings() {
   applyTheme(state.settings.theme);
 }
 
+// Thumbnails are fetched per row and cached, instead of riding along with
+// every list refresh.
+const thumbCache = new Map();
+
+async function thumbFor(id) {
+  if (thumbCache.has(id)) return thumbCache.get(id);
+  let b64 = null;
+  try {
+    b64 = await invoke("get_thumb", { id });
+  } catch (e) {
+    b64 = null;
+  }
+  thumbCache.set(id, b64);
+  return b64;
+}
+
 async function refreshList() {
   let clips = await invoke("list_clips", {
-    limit: 1000,
+    limit: listPageSize(),
     offset: 0,
     kind: state.kind,
     search: state.search,
@@ -108,7 +124,16 @@ async function refreshList() {
   if (pendingDeletion.size) {
     clips = clips.filter((c) => !pendingDeletion.has(c.id));
   }
-  const sig = `${clips.length}:${clips.length ? clips[0].id : "x"}`;
+  // Signature covers everything the list shows, so a pin/time/content change
+  // repaints even when the row count and the newest id stay the same.
+  const sig = [
+    clips.length,
+    state.kind,
+    state.search,
+    clips.length ? clips[0].id : "x",
+    clips.reduce((m, c) => Math.max(m, c.created_at), 0),
+    clips.filter((c) => c.pinned).length,
+  ].join(":");
   state.clips = clips;
   if (sig !== state.signature) {
     state.signature = sig;
@@ -122,6 +147,12 @@ async function refreshList() {
     }
   }
   updateStats();
+}
+
+// The backend caps a page at 1000; ask for exactly that so the list can show
+// every record the settings allow.
+function listPageSize() {
+  return 1000;
 }
 
 async function updateStats() {
@@ -150,11 +181,18 @@ function renderList() {
 
     const icon = document.createElement("div");
     icon.className = "clip-icon";
-    if (c.kind === "image" && c.thumb_base64) {
+    if (c.kind === "image" && c.has_thumb) {
       const img = document.createElement("img");
       img.className = "clip-thumb";
-      img.src = `data:image/png;base64,${c.thumb_base64}`;
+      img.alt = "";
       icon.appendChild(img);
+      thumbFor(c.id).then((b64) => {
+        if (b64) {
+          img.src = `data:image/png;base64,${b64}`;
+        } else {
+          icon.innerHTML = iconFor(c.kind);
+        }
+      });
     } else {
       icon.innerHTML = iconFor(c.kind);
     }
@@ -246,7 +284,20 @@ function renderDetail(d) {
     const iframe = document.createElement("iframe");
     iframe.className = "preview-frame";
     iframe.setAttribute("sandbox", "");
-    const doc = `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.6;margin:0;padding:16px;color:#1c1f26;word-break:break-word;}</style></head><body>${d.html}</body></html>`;
+    // The sandbox stops scripts. Remote images are allowed (emote/illustration
+    // pastes are common and showing them matters more than hiding the fetch);
+    // scripts, frames and objects stay blocked.
+    const previewCsp =
+      "default-src 'none'; img-src data: https:; style-src 'unsafe-inline'";
+    // Colours come from the app theme, not hardcoded values: copied HTML often
+    // declares its own near-white text for a dark site, and a fixed dark
+    // default here would make that text vanish on a light preview.
+    // The iframe is a separate document and cannot see the app's CSS variables,
+    // so the resolved theme colours are injected as literals.
+    const cs = getComputedStyle(document.documentElement);
+    const fg = cs.getPropertyValue("--text").trim() || "#1c1f26";
+    const bg = cs.getPropertyValue("--surface").trim() || "#ffffff";
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${previewCsp}"><style>html,body{background:${bg};}body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.6;margin:0;padding:16px;color:${fg};word-break:break-word;}</style></head><body>${d.html}</body></html>`;
     iframe.srcdoc = doc;
     body.appendChild(iframe);
   } else if (d.text) {
@@ -345,20 +396,28 @@ function closeSettings() {
 }
 
 async function saveSettings() {
-  const rv = $("set-retention").value;
-  const retention = rv === "forever" ? null : Number(rv);
+  // Send the retention as a string: the backend treats null/absent as
+  // "unchanged" and "forever" as "never expire", which a bare number cannot
+  // express.
+  const retention = $("set-retention").value;
   const maxClips = Number($("set-max").value) || 500;
   const theme = $("set-theme").value;
   const applyExisting = $("set-apply").checked;
 
-  await invoke("update_settings", {
-    retentionHours: retention,
-    maxClips,
-    theme,
-    applyExisting,
-  });
+  try {
+    await invoke("update_settings", {
+      retention,
+      maxClips,
+      theme,
+      applyExisting,
+    });
+  } catch (e) {
+    showToast("保存失败：" + e);
+    return;
+  }
   await loadSettings();
   closeSettings();
+  state.signature = "";
   refreshList();
   showToast("设置已保存");
 }
@@ -487,6 +546,9 @@ function bindEvents() {
       $("dbg-output").textContent = "读取失败：" + e;
     }
   });
+  // `get_clipboard_formats` is only registered in debug builds; hide the whole
+  // debug block in release so it does not advertise a missing command.
+  probeDebugTools();
   $("open-data-dir").addEventListener("click", () => invoke("open_data_dir"));
 
   // Custom title bar window controls
@@ -509,6 +571,18 @@ function bindEvents() {
   win.onResized(updateMaxIcon).catch(() => {});
 
   window.addEventListener("keydown", handleKeydown);
+}
+
+// Hide the debug panel when the backend does not expose the diagnostics
+// command (release builds).
+async function probeDebugTools() {
+  const field = $("dbg-formats")?.closest(".field");
+  if (!field) return;
+  try {
+    await invoke("get_clipboard_formats");
+  } catch (e) {
+    field.classList.add("hidden");
+  }
 }
 
 async function init() {

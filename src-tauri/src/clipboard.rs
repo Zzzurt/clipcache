@@ -23,7 +23,10 @@ extern "system" {
     fn GetClipboardSequenceNumber() -> u32;
     fn GetClipboardOwner() -> isize;
     fn GetWindowThreadProcessId(hwnd: isize, pid: *mut u32) -> u32;
+    /// Only referenced by the debug-only format dump.
+    #[cfg(debug_assertions)]
     fn EnumClipboardFormats(format: u32) -> u32;
+    #[cfg(debug_assertions)]
     fn GetClipboardFormatNameW(format: u32, name: *mut u16, size: i32) -> i32;
     fn GetDC(hwnd: isize) -> isize;
     fn ReleaseDC(hwnd: isize, hdc: isize) -> i32;
@@ -32,7 +35,6 @@ extern "system" {
 #[link(name = "gdi32")]
 extern "system" {
     fn CreateCompatibleDC(hdc: isize) -> isize;
-    fn SelectObject(hdc: isize, obj: isize) -> isize;
     fn GetObjectW(obj: isize, size: i32, out: *mut u8) -> i32;
     fn GetDIBits(
         hdc: isize,
@@ -83,13 +85,41 @@ pub fn clipboard_sequence() -> u32 {
     unsafe { GetClipboardSequenceNumber() }
 }
 
-/// Enumerate the current clipboard formats (id, name, byte size). For debugging.
-pub fn clipboard_formats() -> Vec<(u32, String, usize)> {
-    unsafe {
-        let mut out = Vec::new();
-        if OpenClipboard(0) == 0 {
-            return out;
+/// Closes the clipboard on drop. The clipboard is a process-wide, exclusively
+/// locked resource: if any early return or panic escapes between `OpenClipboard`
+/// and `CloseClipboard`, the clipboard stays locked (and, after `EmptyClipboard`,
+/// empty) for every other program on the desktop. Holding this guard makes the
+/// unwinding path safe.
+struct ClipboardGuard;
+
+impl Drop for ClipboardGuard {
+    fn drop(&mut self) {
+        unsafe {
+            CloseClipboard();
         }
+    }
+}
+
+/// Open the clipboard, retrying briefly while another process holds it.
+fn open_clipboard() -> Option<ClipboardGuard> {
+    for _ in 0..10 {
+        if unsafe { OpenClipboard(0) } != 0 {
+            return Some(ClipboardGuard);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    None
+}
+
+/// Enumerate the current clipboard formats (id, name, byte size).
+/// Debug builds only: release does not register the command that calls this.
+#[cfg(debug_assertions)]
+pub fn clipboard_formats() -> Vec<(u32, String, usize)> {
+    let mut out = Vec::new();
+    let Some(_guard) = open_clipboard() else {
+        return out;
+    };
+    unsafe {
         let mut fmt = 0u32;
         loop {
             fmt = EnumClipboardFormats(fmt);
@@ -101,11 +131,11 @@ pub fn clipboard_formats() -> Vec<(u32, String, usize)> {
             let size = if h == 0 { 0 } else { GlobalSize(h) };
             out.push((fmt, name, size));
         }
-        CloseClipboard();
-        out
     }
+    out
 }
 
+#[cfg(debug_assertions)]
 fn format_name(fmt: u32) -> String {
     let std_name = match fmt {
         1 => "CF_TEXT",
@@ -143,25 +173,15 @@ fn format_name(fmt: u32) -> String {
 
 /// Capture the current clipboard contents (text / html / rtf / image).
 pub fn capture() -> Option<CapturedClip> {
-    unsafe {
-        let mut opened = false;
-        for _ in 0..10 {
-            if OpenClipboard(0) != 0 {
-                opened = true;
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-        if !opened {
-            return None;
-        }
-        let result = capture_inner();
-        CloseClipboard();
-        result
-    }
+    let _guard = open_clipboard()?;
+    unsafe { capture_inner() }
 }
 
 unsafe fn capture_inner() -> Option<CapturedClip> {
+    // Respect the "do not record me" signals before reading any content.
+    if is_secret_clipboard() {
+        return None;
+    }
     let source_app = owner_process_name();
     let png_fmt = reg("PNG");
     let html_fmt = reg("HTML Format");
@@ -213,15 +233,13 @@ unsafe fn capture_inner() -> Option<CapturedClip> {
         }
     }
     // CF_BITMAP (device-dependent bitmap handle) via GDI GetDIBits
-    if image.is_none() {
-        if IsClipboardFormatAvailable(CF_BITMAP) != 0 {
-            let hbmp = GetClipboardData(CF_BITMAP);
-            if hbmp != 0 {
-                if let Some(dib_bytes) = hbitmap_to_dib(hbmp) {
-                    if let Some((w, h, rgba)) = dib::dib_to_rgba(&dib_bytes) {
-                        if let Some(png) = encode_png(w, h, &rgba) {
-                            image = Some((png, w, h));
-                        }
+    if image.is_none() && IsClipboardFormatAvailable(CF_BITMAP) != 0 {
+        let hbmp = GetClipboardData(CF_BITMAP);
+        if hbmp != 0 {
+            if let Some(dib_bytes) = hbitmap_to_dib(hbmp) {
+                if let Some((w, h, rgba)) = dib::dib_to_rgba(&dib_bytes) {
+                    if let Some(png) = encode_png(w, h, &rgba) {
+                        image = Some((png, w, h));
                     }
                 }
             }
@@ -283,7 +301,10 @@ unsafe fn capture_inner() -> Option<CapturedClip> {
     let byte_size = text.as_ref().map(|t| t.len() as i64).unwrap_or(0)
         + html.as_ref().map(|h| h.len() as i64).unwrap_or(0)
         + rtf.as_ref().map(|r| r.len() as i64).unwrap_or(0)
-        + image.as_ref().map(|(png, _, _)| png.len() as i64).unwrap_or(0);
+        + image
+            .as_ref()
+            .map(|(png, _, _)| png.len() as i64)
+            .unwrap_or(0);
 
     Some(CapturedClip {
         kind,
@@ -305,47 +326,38 @@ pub fn write_to_clipboard(
     rtf: Option<&str>,
     png: Option<&[u8]>,
 ) -> bool {
+    let Some(_guard) = open_clipboard() else {
+        return false;
+    };
     unsafe {
-        let mut opened = false;
-        for _ in 0..10 {
-            if OpenClipboard(0) != 0 {
-                opened = true;
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-        if !opened {
+        if EmptyClipboard() == 0 {
             return false;
         }
-        let ok = EmptyClipboard() != 0;
-        if ok {
-            if let Some(t) = text {
-                let data = utf8_to_utf16_null(t);
-                set_global(CF_UNICODETEXT, &data);
-            }
-            if let Some(write_html) = build_write_html(text, html, png) {
-                let cf = build_cf_html(&write_html);
-                set_global(reg("HTML Format"), &cf);
-            }
-            if let Some(r) = rtf {
-                set_global(reg("Rich Text Format"), r.as_bytes());
-            }
-            // For combined text+image clips, skip bitmap formats so rich
-            // targets (chat apps etc.) use the HTML path and paste both.
-            let combined = text.is_some() && png.is_some();
-            if !combined {
-                if let Some(png_bytes) = png {
-                    if let Some((w, h, rgba)) = decode_png(png_bytes) {
-                        let dib_bytes = dib::rgba_to_dib(w, h, &rgba);
-                        set_global(CF_DIB, &dib_bytes);
-                    }
-                    set_global(reg("PNG"), png_bytes);
+        if let Some(t) = text {
+            let data = utf8_to_utf16_null(t);
+            set_global(CF_UNICODETEXT, &data);
+        }
+        if let Some(write_html) = build_write_html(text, html, png) {
+            let cf = build_cf_html(&write_html);
+            set_global(reg("HTML Format"), &cf);
+        }
+        if let Some(r) = rtf {
+            set_global(reg("Rich Text Format"), r.as_bytes());
+        }
+        // For combined text+image clips, skip bitmap formats so rich
+        // targets (chat apps etc.) use the HTML path and paste both.
+        let combined = text.is_some() && png.is_some();
+        if !combined {
+            if let Some(png_bytes) = png {
+                if let Some((w, h, rgba)) = decode_png(png_bytes) {
+                    let dib_bytes = dib::rgba_to_dib(w, h, &rgba);
+                    set_global(CF_DIB, &dib_bytes);
                 }
+                set_global(reg("PNG"), png_bytes);
             }
         }
-        CloseClipboard();
-        ok
     }
+    true
 }
 
 // ---------------------------------------------------------------------------
@@ -396,6 +408,51 @@ unsafe fn set_global(format: u32, data: &[u8]) -> bool {
     } else {
         true
     }
+}
+
+/// Windows clipboard privacy signals. Credential Manager, browsers in private
+/// mode and most password managers mark the clipboard so that history tools
+/// stay away from secrets. Documented under "Cloud Clipboard and Clipboard
+/// History Formats" in the Win32 clipboard formats reference.
+///
+/// Presence of either ignore-format, or a zero DWORD in either opt-out flag,
+/// means the content must not be recorded.
+///
+/// Kept separate from the Win32 calls so the decision table can be unit tested.
+fn secret_from_signals(
+    available: &dyn Fn(&str) -> bool,
+    dword: &dyn Fn(&str) -> Option<u32>,
+) -> bool {
+    for name in [
+        "Clipboard Viewer Ignore",
+        "ExcludeClipboardContentFromMonitorProcessing",
+    ] {
+        if available(name) {
+            return true;
+        }
+    }
+    for name in ["CanIncludeInClipboardHistory", "CanUploadToCloudClipboard"] {
+        if !available(name) {
+            continue;
+        }
+        if dword(name) == Some(0) {
+            return true;
+        }
+    }
+    false
+}
+
+unsafe fn is_secret_clipboard() -> bool {
+    let available = |name: &str| {
+        let fmt = reg(name);
+        fmt != 0 && IsClipboardFormatAvailable(fmt) != 0
+    };
+    let dword = |name: &str| {
+        let fmt = reg(name);
+        read_format(fmt)
+            .and_then(|b| (b.len() >= 4).then(|| u32::from_le_bytes([b[0], b[1], b[2], b[3]])))
+    };
+    secret_from_signals(&available, &dword)
 }
 
 unsafe fn owner_process_name() -> Option<String> {
@@ -500,39 +557,74 @@ unsafe fn hbitmap_to_dib(hbmp: isize) -> Option<Vec<u8>> {
         ReleaseDC(0, hdc);
         return None;
     }
-    let old = SelectObject(memdc, hbmp);
     let w = w as u32;
     let h = h as u32;
     let row = (w as usize) * 4;
     let mut dib = vec![0u8; 40 + row * h as usize];
+
+    // GetDIBits documents that `hbmp` must NOT be selected into a device
+    // context, so `memdc` is only used to query the device format. Selecting the
+    // bitmap in first (as this used to do) is undefined behaviour per MSDN.
     dib[0..4].copy_from_slice(&40u32.to_le_bytes()); // biSize
     dib[4..8].copy_from_slice(&(w as i32).to_le_bytes()); // biWidth
     dib[8..12].copy_from_slice(&(h as i32).to_le_bytes()); // biHeight (bottom-up)
     dib[12..14].copy_from_slice(&1u16.to_le_bytes()); // biPlanes
     dib[14..16].copy_from_slice(&32u16.to_le_bytes()); // biBitCount
     dib[20..24].copy_from_slice(&((row * h as usize) as u32).to_le_bytes()); // biSizeImage
-    let res = GetDIBits(memdc, hbmp, 0, h, dib[40..].as_mut_ptr(), dib.as_mut_ptr(), 0);
-    SelectObject(memdc, old);
+    let lines = GetDIBits(
+        memdc,
+        hbmp,
+        0,
+        h,
+        dib[40..].as_mut_ptr(),
+        dib.as_mut_ptr(),
+        0,
+    );
     DeleteDC(memdc);
     ReleaseDC(0, hdc);
-    if res == 0 {
+    // A partial copy (0 < lines < h) would leave uninitialised rows; treat any
+    // short read as a failure rather than storing garbage.
+    if lines as u32 != h {
         return None;
     }
     Some(dib)
 }
 
+/// Upper bound on decoded image size. A small PNG can declare huge dimensions
+/// (a "decompression bomb": 30000x30000 is ~3.6 GB of RGBA), so the declared
+/// size is checked from the header before any pixel buffer is allocated.
+const MAX_IMAGE_PIXELS: u64 = 40_000_000; // ~40 MP, comfortably over 8K
+const MAX_IMAGE_BYTES: usize = 80 * 1024 * 1024;
+
 /// Read an image file from disk and return PNG bytes + dimensions.
 fn image_file_to_png(path: &std::path::Path) -> Option<(Vec<u8>, u32, u32)> {
     let meta = std::fs::metadata(path).ok()?;
-    if meta.len() > 80 * 1024 * 1024 {
+    if meta.len() > MAX_IMAGE_BYTES as u64 {
         return None; // skip absurdly large files to avoid OOM
     }
     let bytes = std::fs::read(path).ok()?;
     bytes_to_png(&bytes)
 }
 
+/// Declared dimensions of an encoded image, read from its header only.
+fn encoded_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?;
+    reader.into_dimensions().ok()
+}
+
 /// Convert arbitrary image bytes (PNG/JPEG/BMP/GIF/WebP) to PNG bytes + dimensions.
 fn bytes_to_png(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
+    if bytes.len() > MAX_IMAGE_BYTES {
+        return None;
+    }
+    // Reject bombs from the header before decoding any pixels.
+    if let Some((w, h)) = encoded_dimensions(bytes) {
+        if (w as u64) * (h as u64) > MAX_IMAGE_PIXELS {
+            return None;
+        }
+    }
     if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
         let dims = png_dimensions(bytes).unwrap_or((0, 0));
         return Some((bytes.to_vec(), dims.0, dims.1));
@@ -547,7 +639,13 @@ fn bytes_to_png(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
 /// ASCII-only lowercase (byte-length preserving, keeps slicing indices aligned).
 fn ascii_lower(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_ascii_uppercase() { (c as u8 + 32) as char } else { c })
+        .map(|c| {
+            if c.is_ascii_uppercase() {
+                (c as u8 + 32) as char
+            } else {
+                c
+            }
+        })
         .collect()
 }
 
@@ -617,7 +715,7 @@ fn embedded_image_to_png(html: &str) -> Option<(Vec<u8>, u32, u32)> {
     let b64_pos = ascii_lower(rest).find(b64_marker)?;
     let after = &rest[b64_pos + b64_marker.len()..];
     let end = after
-        .find(|c: char| c == '"' || c == '\'' || c == ' ' || c == '>' || c == '\n')
+        .find(['"', '\'', ' ', '>', '\n'])
         .unwrap_or(after.len());
     let b64 = after[..end].trim();
     use base64::Engine;
@@ -691,13 +789,26 @@ fn decode_fragment(bytes: &[u8]) -> String {
 /// Decode bytes using the system ANSI code page (CP_ACP) via MultiByteToWideChar.
 fn ansi_to_unicode(bytes: &[u8]) -> String {
     unsafe {
-        let needed =
-            MultiByteToWideChar(0, 0, bytes.as_ptr(), bytes.len() as i32, std::ptr::null_mut(), 0);
+        let needed = MultiByteToWideChar(
+            0,
+            0,
+            bytes.as_ptr(),
+            bytes.len() as i32,
+            std::ptr::null_mut(),
+            0,
+        );
         if needed <= 0 {
             return String::new();
         }
         let mut buf = vec![0u16; needed as usize];
-        MultiByteToWideChar(0, 0, bytes.as_ptr(), bytes.len() as i32, buf.as_mut_ptr(), needed);
+        MultiByteToWideChar(
+            0,
+            0,
+            bytes.as_ptr(),
+            bytes.len() as i32,
+            buf.as_mut_ptr(),
+            needed,
+        );
         let mut s = String::from_utf16_lossy(&buf);
         while s.ends_with('\0') {
             s.pop();
@@ -753,11 +864,7 @@ fn build_cf_html(html: &str) -> Vec<u8> {
 }
 
 /// Build a self-contained HTML for copy-back so text + image paste together.
-fn build_write_html(
-    text: Option<&str>,
-    html: Option<&str>,
-    png: Option<&[u8]>,
-) -> Option<String> {
+fn build_write_html(text: Option<&str>, html: Option<&str>, png: Option<&[u8]>) -> Option<String> {
     let b64 = png.map(|p| {
         use base64::Engine;
         base64::engine::general_purpose::STANDARD.encode(p)
@@ -785,19 +892,23 @@ fn build_write_html(
     }
 }
 
-/// Replace the first `<img ...>` tag with one embedding the given base64 PNG,
-/// or append the image if the html has no img tag.
+/// Replaces the first `<img ...>` tag with one embedding the given base64 PNG,
+/// or appends the image if the html has no img tag. Truncated tags (no closing
+/// `>`) leave the html untouched instead of slicing past the end of the buffer.
 fn embed_image_in_html(html: &str, png_base64: &str) -> String {
     let new_tag = format!(r#"<img src="data:image/png;base64,{}">"#, png_base64);
     let lower = ascii_lower(html);
-    if let Some(pos) = lower.find("<img") {
-        let after = &html[pos + 4..];
-        let after_lower = &lower[pos + 4..];
-        let tag_end = after_lower.find('>').unwrap_or(after.len());
-        format!("{}{}{}", &html[..pos], new_tag, &after[tag_end + 1..])
-    } else {
-        format!("{}{}", html, new_tag)
-    }
+    let Some(pos) = lower.find("<img") else {
+        return format!("{}{}", html, new_tag);
+    };
+    let after = &html[pos + 4..];
+    let after_lower = &lower[pos + 4..];
+    // A copied fragment can end mid-tag; `find('>')` returning None means the
+    // tag is incomplete, and `after.len()` is *not* a valid slice start.
+    let Some(tag_end) = after_lower.find('>') else {
+        return html.to_string();
+    };
+    format!("{}{}{}", &html[..pos], new_tag, &after[tag_end + 1..])
 }
 
 fn escape_html(s: &str) -> String {
@@ -850,6 +961,16 @@ fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Option<Vec<u8>> {
 }
 
 fn decode_png(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    // Same bomb guard as `bytes_to_png`: these bytes come from a stored file
+    // that was itself derived from clipboard content.
+    if bytes.len() > MAX_IMAGE_BYTES {
+        return None;
+    }
+    if let Some((w, h)) = encoded_dimensions(bytes) {
+        if (w as u64) * (h as u64) > MAX_IMAGE_PIXELS {
+            return None;
+        }
+    }
     let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png).ok()?;
     let rgba = img.to_rgba8();
     let (w, h) = rgba.dimensions();
@@ -859,6 +980,69 @@ fn decode_png(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oversized_image_is_rejected_from_its_header() {
+        // A PNG whose IHDR declares 30000x30000 would need ~3.6 GB of RGBA.
+        // The guard must reject it from the header, before allocating pixels.
+        fn crc32(data: &[u8]) -> u32 {
+            let mut table = [0u32; 256];
+            for i in 0..256u32 {
+                let mut c = i;
+                for _ in 0..8 {
+                    c = if c & 1 != 0 {
+                        0xEDB8_8320 ^ (c >> 1)
+                    } else {
+                        c >> 1
+                    };
+                }
+                table[i as usize] = c;
+            }
+            let mut crc = 0xFFFF_FFFFu32;
+            for &b in data {
+                crc = table[((crc ^ b as u32) & 0xFF) as usize] ^ (crc >> 8);
+            }
+            crc ^ 0xFFFF_FFFF
+        }
+        fn chunk(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
+            let mut v = Vec::new();
+            v.extend_from_slice(&(body.len() as u32).to_be_bytes());
+            v.extend_from_slice(kind);
+            v.extend_from_slice(body);
+            let mut for_crc = kind.to_vec();
+            for_crc.extend_from_slice(body);
+            v.extend_from_slice(&crc32(&for_crc).to_be_bytes());
+            v
+        }
+        fn bomb_png(w: u32, h: u32) -> Vec<u8> {
+            let mut ihdr = Vec::new();
+            ihdr.extend_from_slice(&w.to_be_bytes());
+            ihdr.extend_from_slice(&h.to_be_bytes());
+            ihdr.extend_from_slice(&[8, 6, 0, 0, 0]);
+            let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+            png.extend_from_slice(&chunk(b"IHDR", &ihdr));
+            png.extend_from_slice(&chunk(b"IDAT", &[0x78, 0x9C, 0x00]));
+            png.extend_from_slice(&chunk(b"IEND", &[]));
+            png
+        }
+
+        let bomb = bomb_png(30_000, 30_000);
+        assert!(
+            encoded_dimensions(&bomb) == Some((30_000, 30_000)),
+            "header dimensions should be readable"
+        );
+        assert!(
+            bytes_to_png(&bomb).is_none(),
+            "30000x30000 must be rejected"
+        );
+
+        // A normal image of the same encoding path still works.
+        let ok = encode_png(64, 64, &vec![0u8; 64 * 64 * 4]).unwrap();
+        assert!(
+            bytes_to_png(&ok).is_some(),
+            "normal image must still decode"
+        );
+    }
 
     #[test]
     fn cf_html_roundtrip() {
@@ -877,7 +1061,10 @@ mod tests {
     #[test]
     fn decode_fragment_variants() {
         // UTF-8 with trailing NULs
-        assert_eq!(decode_fragment(b"hello<b>world</b>\0\0"), "hello<b>world</b>");
+        assert_eq!(
+            decode_fragment(b"hello<b>world</b>\0\0"),
+            "hello<b>world</b>"
+        );
         // UTF-16LE with BOM
         let mut bytes = vec![0xFF, 0xFE];
         for u in "中文测试".encode_utf16() {
@@ -970,10 +1157,65 @@ mod tests {
     }
 
     #[test]
+    fn embed_image_leaves_truncated_tag_alone() {
+        // A copied fragment can stop mid-tag; the old code sliced at
+        // `after.len() + 1` and panicked.
+        for broken in ["<p>x</p><img", "<p>text<img src=\"a.png\"", "<img"] {
+            let out = embed_image_in_html(broken, "QUJD");
+            assert_eq!(out, broken, "truncated html must be returned unchanged");
+        }
+    }
+
+    #[test]
+    fn embed_image_replaces_well_formed_tag() {
+        let out = embed_image_in_html(r#"<p>x</p><img src="a.png">"#, "QUJD");
+        assert_eq!(out, r#"<p>x</p><img src="data:image/png;base64,QUJD">"#);
+    }
+
+    #[test]
+    fn secret_detection_decision_table() {
+        let none = |_: &str| false;
+        let none_dword = |_: &str| None::<u32>;
+
+        // Ordinary clipboard: nothing marks it secret.
+        assert!(!secret_from_signals(&none, &none_dword));
+
+        // Either ignore-format alone means "do not record me".
+        for marker in [
+            "Clipboard Viewer Ignore",
+            "ExcludeClipboardContentFromMonitorProcessing",
+        ] {
+            let avail = move |n: &str| n == marker;
+            assert!(
+                secret_from_signals(&avail, &none_dword),
+                "{marker} must mark the clipboard secret"
+            );
+        }
+
+        // Opt-out flags only count when the DWORD is zero.
+        for flag in ["CanIncludeInClipboardHistory", "CanUploadToCloudClipboard"] {
+            let avail = move |n: &str| n == flag;
+            let zero = move |n: &str| (n == flag).then_some(0u32);
+            let one = move |n: &str| (n == flag).then_some(1u32);
+            assert!(secret_from_signals(&avail, &zero), "{flag}=0 is secret");
+            assert!(!secret_from_signals(&avail, &one), "{flag}=1 is not secret");
+            // Present but unreadable: fail open, do not hide user data.
+            assert!(!secret_from_signals(&avail, &none_dword));
+        }
+    }
+
+    #[test]
+    #[ignore = "writes to the real system clipboard; run with --ignored"]
     fn write_back_combined_roundtrip() {
         let text = "组合文本";
-        let png = encode_png(2, 2, &[255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255])
-            .unwrap();
+        let png = encode_png(
+            2,
+            2,
+            &[
+                255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+            ],
+        )
+        .unwrap();
         let ok = write_to_clipboard(Some(text), None, None, Some(&png));
         assert!(ok, "write_to_clipboard failed");
         let cap = capture().expect("capture failed");
@@ -987,7 +1229,10 @@ mod tests {
         );
     }
 
+    // Covers a debug-only function, so it only exists in debug test builds.
+    #[cfg(debug_assertions)]
     #[test]
+    #[ignore = "writes to the real system clipboard; run with --ignored"]
     fn enumerate_formats() {
         let ok = write_to_clipboard(Some("format-test"), None, None, None);
         assert!(ok);

@@ -7,14 +7,22 @@ mod settings;
 mod storage;
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, RwLock};
 
 use tauri::Manager;
 
 pub struct AppState {
     pub store: storage::Store,
     pub settings: RwLock<settings::Settings>,
-    pub last_written_hash: Mutex<Option<String>>,
+    /// Sequence number produced by our own clipboard write-back. The listener
+    /// skips exactly that clipboard change; `0` means "nothing pending".
+    ///
+    /// Matching on the sequence number rather than on a content hash is what
+    /// makes this correct: `write_to_clipboard` rewrites HTML (it inlines the
+    /// PNG as a data URI), so the bytes on the clipboard do not hash to the
+    /// stored fields and a content match would re-capture the clip.
+    pub own_write_seq: AtomicU32,
     pub data_dir: PathBuf,
 }
 
@@ -30,7 +38,7 @@ pub fn run() {
             let state = Arc::new(AppState {
                 store,
                 settings: RwLock::new(settings),
-                last_written_hash: Mutex::new(None),
+                own_write_seq: AtomicU32::new(0),
                 data_dir: data_dir.clone(),
             });
             app.manage(state.clone());
@@ -42,22 +50,50 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            commands::list_clips,
-            commands::get_clip,
-            commands::copy_to_clipboard,
-            commands::delete_clip,
-            commands::clear_all,
-            commands::pin_clip,
-            commands::get_settings,
-            commands::update_settings,
-            commands::get_stats,
-            commands::get_clipboard_formats,
-            commands::get_data_dir,
-            commands::open_data_dir,
-        ])
+        .invoke_handler(build_handler())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// The debug-only `get_clipboard_formats` command is registered in debug builds
+/// and absent from release, so the shipped app exposes no diagnostics surface.
+#[cfg(debug_assertions)]
+fn build_handler<R: tauri::Runtime>(
+) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
+    tauri::generate_handler![
+        commands::list_clips,
+        commands::get_clip,
+        commands::get_thumb,
+        commands::copy_to_clipboard,
+        commands::delete_clip,
+        commands::clear_all,
+        commands::pin_clip,
+        commands::get_settings,
+        commands::update_settings,
+        commands::get_stats,
+        commands::get_clipboard_formats,
+        commands::get_data_dir,
+        commands::open_data_dir,
+    ]
+}
+
+#[cfg(not(debug_assertions))]
+fn build_handler<R: tauri::Runtime>(
+) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
+    tauri::generate_handler![
+        commands::list_clips,
+        commands::get_clip,
+        commands::get_thumb,
+        commands::copy_to_clipboard,
+        commands::delete_clip,
+        commands::clear_all,
+        commands::pin_clip,
+        commands::get_settings,
+        commands::update_settings,
+        commands::get_stats,
+        commands::get_data_dir,
+        commands::open_data_dir,
+    ]
 }
 
 /// Resolve the data directory: env override > app data dir > local fallback.
@@ -65,9 +101,11 @@ fn resolve_data_dir(app: &tauri::App) -> PathBuf {
     if let Some(p) = std::env::var_os("CLIPCACHE_DATA_DIR") {
         return PathBuf::from(p);
     }
-    app.path()
-        .app_data_dir()
-        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default().join("clipcache-data"))
+    app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir()
+            .unwrap_or_default()
+            .join("clipcache-data")
+    })
 }
 
 /// Poll the clipboard sequence number and capture on change.
@@ -82,27 +120,17 @@ fn spawn_listener(state: Arc<AppState>) {
             }
             last_seq = seq;
 
+            // Skip exactly the clipboard change our own write-back produced.
+            // Consume the marker either way so a stale value cannot suppress a
+            // later user copy.
+            let expected = state.own_write_seq.swap(0, Ordering::SeqCst);
+            if expected != 0 && expected == seq {
+                continue;
+            }
+
             let Some(cap) = clipboard::capture() else {
                 continue;
             };
-            let hash = storage::content_hash(
-                &cap.kind,
-                cap.text.as_deref(),
-                cap.html.as_deref(),
-                cap.rtf.as_deref(),
-                cap.png_bytes.as_deref(),
-            );
-
-            // Skip our own write-back; always consume the marker.
-            let is_own = {
-                let mut lw = state.last_written_hash.lock().unwrap();
-                let m = lw.as_deref() == Some(hash.as_str());
-                *lw = None;
-                m
-            };
-            if is_own {
-                continue;
-            }
 
             let (retention, max_clips) = {
                 let s = state.settings.read().unwrap();
