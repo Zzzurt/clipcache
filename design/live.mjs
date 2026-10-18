@@ -11,7 +11,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const PORT = 9222;
+const PORT = Number(process.env.CC_CDP_PORT || 9222);
 
 const argv = process.argv.slice(2);
 const out = argv[0] || "shots/real-app.png";
@@ -20,6 +20,7 @@ const flag = (name, def = null) => {
   return i === -1 ? def : argv[i + 1] ?? true;
 };
 const row = Number(flag("row", 0));
+const clipId = flag("id", null);
 const modal = argv.includes("--modal");
 const theme = flag("theme", null);
 
@@ -84,17 +85,24 @@ await evaluate(`new Promise((done) => {
   })();
 })`);
 
-if (row > 0) {
-  // Real DOM click, so main.js handlers run exactly as for a user.
-  await evaluate(`(() => {
-    const el = document.querySelectorAll(".clip-item")[${row - 1}];
+if (row > 0 || clipId) {
+  // Real DOM click, so main.js handlers run exactly as for a user. Selecting by
+  // id survives the scrolled list, where row numbers depend on scroll position.
+  const picked = await evaluate(`(() => {
+    const el = ${
+      clipId
+        ? `document.querySelector('.clip-item[data-id=${JSON.stringify(String(clipId))}]')`
+        : `document.querySelectorAll(".clip-item")[${row - 1}]`
+    };
     if (!el) return false;
+    el.scrollIntoView({ block: "nearest" });
     el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     el.click();
     return true;
   })()`);
-  await new Promise((r) => setTimeout(r, 700));
+  if (!picked) throw new Error("clip row not found");
+  await new Promise((r) => setTimeout(r, 900));
 }
 
 if (modal) {
