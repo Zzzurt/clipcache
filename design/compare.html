@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>ClipCache 界面改版 · 前后对比</title>
+<style>
+  :root {
+    --bg: #f2f0ec;
+    --surface: #fcfbf9;
+    --ink: #1b1a17;
+    --ink-soft: #43413b;
+    --muted: #79756c;
+    --faint: #a5a096;
+    --line: #ddd9d0;
+    --accent: #b4552e;
+    --sans: "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif;
+    --mono: "Cascadia Code", ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  .doc {
+    width: 1120px;
+    margin: 0 auto;
+    padding: 56px 0 72px;
+  }
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+  h1 {
+    margin: 0 0 12px;
+    font-size: 30px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+  }
+  .lede {
+    margin: 0;
+    max-width: 640px;
+    font-size: 14px;
+    line-height: 1.75;
+    color: var(--muted);
+  }
+
+  .sect { margin-top: 68px; }
+  .sect-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding-bottom: 13px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 26px;
+  }
+  .sect-head h2 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  .sect-head .tag {
+    font-size: 11.5px;
+    color: var(--faint);
+    letter-spacing: 0.04em;
+  }
+
+  figure { margin: 0; }
+  .shot {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 0 0 1px var(--line), 0 22px 50px -30px rgba(27, 26, 23, 0.4);
+  }
+  .shot img { display: block; width: 100%; }
+  .cap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 12px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .cap .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--faint);
+    flex: none;
+  }
+  .cap.after .dot { background: var(--accent); }
+  .cap b { color: var(--ink); font-weight: 600; }
+
+  .stack { display: flex; flex-direction: column; gap: 26px; }
+
+  /* 设计决策 */
+  .notes {
+    margin-top: 56px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .note {
+    background: var(--surface);
+    padding: 22px 24px 24px;
+  }
+  .notes.three { grid-template-columns: repeat(3, 1fr); }
+  .note .n {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    margin-bottom: 9px;
+  }
+  .note h3 {
+    margin: 0 0 8px;
+    font-size: 13.5px;
+    font-weight: 650;
+  }
+  .note p {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.72;
+    color: var(--muted);
+  }
+  .note code {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    background: #efece6;
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--ink-soft);
+  }
+  .note .why {
+    margin-top: 10px;
+    font-size: 11.5px;
+    color: var(--faint);
+    line-height: 1.6;
+    padding-left: 11px;
+    border-left: 2px solid var(--line);
+  }
+
+  .swatches {
+    display: flex;
+    gap: 0;
+    margin-top: 22px;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px var(--line);
+  }
+  .sw { flex: 1; height: 74px; position: relative; }
+  .sw span {
+    position: absolute;
+    left: 9px; bottom: 7px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.03em;
+  }
+  .filed { margin-top: 14px; font-size: 11.5px; color: var(--faint); }
+</style>
+</head>
+<body>
+<div class="doc">
+  <div class="eyebrow">Design Review · v1</div>
+  <h1>ClipCache 界面改版：从「工具界面」到「安静的纸」</h1>
+  <p class="lede">
+    剪贴板管理器是每天扫一眼就走的工具，界面应当退后一步。这版把旧版的蓝色主色、胶囊过滤器、卡片阴影全部拿掉，
+    改用暖中性纸底 + 单一赤陶橙强调色，让层级由排版和发丝线承担，而不是由颜色和装饰承担。
+  </p>
+
+  <div class="sect">
+    <div class="sect-head">
+      <h2>浅色 · 前后对比</h2>
+      <span class="tag">1000 × 700 · 2x</span>
+    </div>
+    <div class="stack">
+      <figure>
+        <div class="shot"><img src="shots/before-light.png" alt="改版前浅色" /></div>
+        <p class="cap"><span class="dot"></span><b>改版前</b> · 蓝色主色 + 胶囊分段过滤器 + 圆角按钮堆叠 + 预览区无排版约束</p>
+      </figure>
+      <figure>
+        <div class="shot"><img src="shots/after-light.png" alt="改版后浅色" /></div>
+        <p class="cap after"><span class="dot"></span><b>改版后</b> · 下划线过滤器 + 选中态橙竖条 + 660px 阅读栏 + 油墨实心主按钮</p>
+      </figure>
+    </div>
+  </div>
+
+  <div class="sect">
+    <div class="sect-head">
+      <h2>深色 · 前后对比</h2>
+      <span class="tag">暖黑而非冷灰</span>
+    </div>
+    <div class="stack">
+      <figure>
+        <div class="shot"><img src="shots/before-dark.png" alt="改版前深色" /></div>
+        <p class="cap"><span class="dot"></span><b>改版前</b> · 冷灰 #131417，蓝色强调压在深底上发灰、对比不足</p>
+      </figure>
+      <figure>
+        <div class="shot"><img src="shots/after-dark.png" alt="改版后深色" /></div>
+        <p class="cap after"><span class="dot"></span><b>改版后</b> · 暖黑 #100f0e 三级层次，强调色提亮到 #e08a5b</p>
+      </figure>
+    </div>
+  </div>
+
+  <div class="sect">
+    <div class="sect-head">
+      <h2>三个色系方向</h2>
+      <span class="tag">A 赤陶 / B 中性灰 / C 纸感</span>
+    </div>
+    <p class="lede" style="margin-bottom:22px">
+      版式、间距、发丝线、图标全部共用同一套，只换色系与质感。三种都能落地，取舍是"这工具想被别人看成什么"。
+    </p>
+    <div class="stack">
+      <figure>
+        <div class="shot"><img src="shots/variants-light.png" alt="三个变体浅色并排" /></div>
+        <p class="cap after"><span class="dot"></span><b>浅色三选一</b></p>
+      </figure>
+      <figure>
+        <div class="shot"><img src="shots/variants-dark.png" alt="三个变体深色并排" /></div>
+        <p class="cap after"><span class="dot"></span><b>深色三选一</b></p>
+      </figure>
+    </div>
+    <div class="notes three" style="margin-top:26px">
+      <div class="note">
+        <div class="n">A</div>
+        <h3>赤陶 · 有主张</h3>
+        <p>暖中性底 + 赤陶橙 <code>#b4552e</code>。<b>个性最强</b>，一眼记住，但橙色只占极小面积才不吵。</p>
+        <div class="why">适合：愿意承担一点"设计感"的产品。<br />风险：橙红在中文语境里容易被读成警示色。</div>
+      </div>
+      <div class="note">
+        <div class="n">B</div>
+        <h3>中性灰 · 最克制</h3>
+        <p>抽掉全部暖调与彩色，<code>--accent</code> 直接改成石墨 <code>#34343a</code>。<b>零色相</b>，靠底色深浅与竖条标记选中。</p>
+        <div class="why">适合：想彻底消失在系统里、不打扰人的工具。<br />代价：小窗里的层级更依赖间距，稍不克制就发灰发平。</div>
+      </div>
+      <div class="note">
+        <div class="n">C</div>
+        <h3>纸感 · 最暖</h3>
+        <p>米黄纸底 <code>#f1ebdf</code> + 棕墨 <code>#241f18</code> + 赭石强调，叠一层 5% 的 <code>feTurbulence</code> 纸纤维。<b>气质最独特</b>，预览标题换成衬线。</p>
+        <div class="why">适合：强调"读"的场景（富文本、长文预览占比高）。<br />风险：纸底会降低对比度余量，深色下尤其要盯 AA 标准。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sect">
+    <div class="sect-head">
+      <h2>其余状态</h2>
+      <span class="tag">图片预览 / 空态 / 设置</span>
+    </div>
+    <div class="stack">
+      <figure>
+        <div class="shot"><img src="shots/after-image-dark.png" alt="图片预览" /></div>
+        <p class="cap after"><span class="dot"></span><b>图片预览</b> · 图注进发丝线分隔的 figcaption，不再是裸露的一块图</p>
+      </figure>
+      <figure>
+        <div class="shot"><img src="shots/after-settings.png" alt="设置弹窗" /></div>
+        <p class="cap after"><span class="dot"></span><b>设置弹窗</b> · 452px / 16px 圆角，字段标签 11px 大写字距，自绘开关与下拉</p>
+      </figure>
+      <figure>
+        <div class="shot"><img src="shots/after-empty.png" alt="空态" /></div>
+        <p class="cap after"><span class="dot"></span><b>空态</b> · 46px 描边方章 + 两行说明，替代原来的居中提示块</p>
+      </figure>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="note">
+      <div class="n">01</div>
+      <h3>只用一种彩色</h3>
+      <p>全站唯一彩色是赤陶橙 <code>#b4552e</code>，只出现在选中态、焦点环、置顶标记和富文本 bullet 上。主按钮反过来用油墨黑 <code>#1b1a17</code>，不抢强调色。</p>
+      <div class="why">旧版蓝色主按钮 + 蓝色选中底 + 蓝色焦点环同时出现，视觉上互相打架，也像默认模板。</div>
+    </div>
+    <div class="note">
+      <div class="n">02</div>
+      <h3>发丝线取代阴影</h3>
+      <p>分层靠 <code>1px #e4e1da</code>：列表行之间是缩进的短线（<code>left: 61px</code>，让缩略图一列贯通），区域之间是全宽线。整屏只有弹窗用一处投影。</p>
+      <div class="why">卡片 + 阴影会让一个 1000px 的小窗显得拥挤；发丝线更安静，也更接近排版而非控件。</div>
+    </div>
+    <div class="note">
+      <div class="n">03</div>
+      <h3>过滤器改成下划线 tab</h3>
+      <p>「全部 / 文本 / 富文本 / 图片」从胶囊按钮组变成贴在顶栏底边的文字 tab，选中项用 2px 橙色下边线。<code>height: 56px</code> 撑满顶栏，视觉上成为分隔线的一部分。</p>
+      <div class="why">胶囊按钮是"控件"，下划线 tab 是"位置"——后者信息更轻，也省掉了一整排边框。</div>
+    </div>
+    <div class="note">
+      <div class="n">04</div>
+      <h3>预览区进阅读栏</h3>
+      <p>正文不再铺满整块画布，而是收进 <code>max-width: 660px</code> 居中的 <code>.sheet</code>，上下留 34 / 56px 呼吸。正文 13.5px / 1.65，列表项用 7px 橙色圆角方块做 bullet。</p>
+      <div class="why">旧版内容顶到窗口右侧边缘，长文本行宽失控；阅读栏让视线不用横跨整个窗口。</div>
+    </div>
+    <div class="note">
+      <div class="n">05</div>
+      <h3>选中态是竖条，不是色块</h3>
+      <p>选中的行用 9% 透明度的橙底 + 左侧 2px 竖条 + 标题转 <code>#8f3f20</code>。置顶标记从药丸徽章降级成一个 5px 圆点加两个字。</p>
+      <div class="why">列表里同时有缩略图、置顶徽章、来源、时间，再加一个实心色块就过载了；竖条足够定位，又不抢内容。</div>
+    </div>
+    <div class="note">
+      <div class="n">06</div>
+      <h3>键盘提示常驻状态栏</h3>
+      <p>状态栏右侧固定显示 <code>↑↓ 浏览 / ↵ 复制 / ⌫ 删除</code> 三组小键帽，左侧是记录数、体积、图片数，用 2px 圆点分隔。</p>
+      <div class="why">这个工具的核心是"选中—回车—走人"，快捷键不该只写在 README 里。</div>
+    </div>
+  </div>
+
+  <div class="sect">
+    <div class="sect-head">
+      <h2>色板</h2>
+      <span class="tag">浅色 / 深色</span>
+    </div>
+    <div class="swatches">
+      <div class="sw" style="background:#f5f4f1"><span style="color:#79756c">#f5f4f1</span></div>
+      <div class="sw" style="background:#fcfbf9"><span style="color:#79756c">#fcfbf9</span></div>
+      <div class="sw" style="background:#e4e1da"><span style="color:#79756c">#e4e1da</span></div>
+      <div class="sw" style="background:#a5a096"><span style="color:#fcfbf9">#a5a096</span></div>
+      <div class="sw" style="background:#79756c"><span style="color:#fcfbf9">#79756c</span></div>
+      <div class="sw" style="background:#1b1a17"><span style="color:#fcfbf9">#1b1a17</span></div>
+      <div class="sw" style="background:#b4552e"><span style="color:#fcfbf9">#b4552e</span></div>
+    </div>
+    <div class="filed">深色：<code style="font-family:var(--mono)">#100f0e / #161513 / #262420 / #6b675f / #8f8a80 / #edeae2 / #e08a5b</code></div>
+  </div>
+</div>
+</body>
+</html>

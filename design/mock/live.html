@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ClipCache</title>
+    <link rel="stylesheet" href="../../src/styles.css" />
+    
+<script>
+(() => {
+  const now = Date.now();
+  const CLIPS = [
+    { id: 1, kind: "image", preview: "图片 640×400", created_at: now - 3 * 60000, source_app: "Photoshop", pinned: true, byte_size: 1228800, has_thumb: true },
+    { id: 2, kind: "image", preview: "图片 520×360", created_at: now - 10 * 60000, source_app: "Figma", pinned: false, byte_size: 640000, has_thumb: true },
+    { id: 3, kind: "html", preview: "部署清单 执行数据库迁移 更新环境变量 重启服务并…", created_at: now - 26 * 60000, source_app: "Notion", pinned: false, byte_size: 214, has_thumb: false },
+    { id: 4, kind: "text", preview: "SELECT id, title, created_at FROM articles WHERE …", created_at: now - 49 * 60000, source_app: "VS Code", pinned: false, byte_size: 132, has_thumb: false },
+    { id: 5, kind: "text", preview: "https://github.com/Zzzurt/clipcache", created_at: now - 3600000, source_app: "Chrome", pinned: false, byte_size: 41, has_thumb: false },
+    { id: 6, kind: "text", preview: "✓ 构建成功，耗时 1m 42s", created_at: now - 7200000, source_app: "Terminal", pinned: false, byte_size: 24, has_thumb: false },
+  ];
+  const thumb = (a, b, c) => {
+    const cv = document.createElement("canvas");
+    cv.width = 160; cv.height = 160;
+    const g = cv.getContext("2d");
+    const lg = g.createLinearGradient(0, 0, 160, 160);
+    lg.addColorStop(0, a); lg.addColorStop(0.55, b); lg.addColorStop(1, c);
+    g.fillStyle = lg; g.fillRect(0, 0, 160, 160);
+    g.fillStyle = "rgba(0,0,0,.12)";
+    g.beginPath(); g.arc(118, 118, 46, 0, 7); g.fill();
+    g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(18, 118);
+    g.bezierCurveTo(40, 88, 56, 112, 72, 92);
+    g.bezierCurveTo(88, 72, 106, 58, 130, 76); g.stroke();
+    return cv.toDataURL("image/png").split(",")[1];
+  };
+  const DETAIL = {
+    1: { kind: "image", created_at: now - 3 * 60000, byte_size: 1228800, source_app: "Photoshop", pinned: true,
+         image_base64: thumb("#8d7b63", "#c2a07a", "#3f4a52") },
+    2: { kind: "image", created_at: now - 10 * 60000, byte_size: 640000, source_app: "Figma", pinned: false,
+         image_base64: thumb("#4c5b6b", "#7d8f9c", "#2f3944") },
+    3: { kind: "html", created_at: now - 26 * 60000, byte_size: 214, source_app: "Notion", pinned: false,
+         html: "<h1>部署清单</h1><ul><li>执行数据库迁移</li><li>更新环境变量</li><li>重启服务并验证健康检查</li></ul>",
+         text: "部署清单\n执行数据库迁移\n更新环境变量\n重启服务并验证健康检查" },
+    4: { kind: "text", created_at: now - 49 * 60000, byte_size: 132, source_app: "VS Code", pinned: false,
+         text: "SELECT id, title, created_at FROM articles WHERE status = 'draft' ORDER BY created_at DESC LIMIT 20;" },
+    5: { kind: "text", created_at: now - 3600000, byte_size: 41, source_app: "Chrome", pinned: false,
+         text: "https://github.com/Zzzurt/clipcache" },
+    6: { kind: "text", created_at: now - 7200000, byte_size: 24, source_app: "Terminal", pinned: false,
+         text: "✓ 构建成功，耗时 1m 42s" },
+  };
+  const handlers = {
+    get_settings: () => ({ retention_hours: 168, max_clips: 500, theme: new URLSearchParams(location.search).get("theme") || "light" }),
+    list_clips: () => CLIPS,
+    get_stats: () => ({ count: 6, total_bytes: 58160, image_count: 2 }),
+    get_clip: ({ id }) => DETAIL[id],
+    get_thumb: ({ id }) => (id === 1 ? thumb("#7b8a6a", "#b98a5e", "#5c4a3d") : thumb("#4c5b6b", "#7d8f9c", "#2f3944")),
+    get_data_dir: () => "%APPDATA%\\com.clipcache.app",
+    get_clipboard_formats: () => { throw new Error("debug only"); },
+    open_data_dir: () => {},
+    copy_to_clipboard: () => {},
+    delete_clip: () => {},
+    pin_clip: () => {},
+    clear_all: () => 0,
+    update_settings: () => {},
+  };
+  window.__TAURI__ = {
+    core: { invoke: async (cmd, args) => handlers[cmd] ? handlers[cmd](args || {}) : null },
+    window: {
+      getCurrentWindow: () => ({
+        minimize() {}, toggleMaximize() {}, close() {},
+        isMaximized: async () => false,
+        onResized: async () => {},
+      }),
+    },
+  };
+})();
+</script>
+
+    <script type="module" src="../../src/main.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="toolbar">
+        <div class="brand">
+          <span class="mark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="8" y="3" width="12" height="14" rx="2.5" />
+              <path d="M16 20.5H6.5A2.5 2.5 0 0 1 4 18V7" />
+            </svg>
+          </span>
+          <span class="wordmark">ClipCache</span>
+        </div>
+
+        <div class="search">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="M20 20l-3.6-3.6"></path>
+          </svg>
+          <input id="search" type="text" placeholder="搜索记录" spellcheck="false" autocomplete="off" />
+          <kbd>Ctrl K</kbd>
+        </div>
+
+        <nav class="filters" id="filters">
+          <button class="filter active" data-kind="">全部</button>
+          <button class="filter" data-kind="text">文本</button>
+          <button class="filter" data-kind="html">富文本</button>
+          <button class="filter" data-kind="image">图片</button>
+        </nav>
+
+        <div class="actions">
+          <button id="clear-btn" class="icon-btn" title="清空全部">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 7h16M9.5 7V4.8h5V7M6.5 7l.8 12.2h9.4L17.5 7"></path>
+            </svg>
+          </button>
+          <button id="settings-btn" class="icon-btn" title="设置">
+            <svg class="gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="win-controls">
+          <button id="win-min" class="win-btn" title="最小化">
+            <svg viewBox="0 0 10 10"><path d="M1 5h8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+          </button>
+          <button id="win-max" class="win-btn" title="最大化">
+            <svg viewBox="0 0 10 10"><rect x="1.1" y="1.1" width="7.8" height="7.8" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>
+          </button>
+          <button id="win-close" class="win-btn win-close" title="关闭">
+            <svg viewBox="0 0 10 10"><path d="M1.4 1.4l7.2 7.2M8.6 1.4L1.4 8.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="list-pane">
+          <div class="list" id="list"></div>
+          <div class="empty-state" id="empty-state">
+            <div class="empty-glyph">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="8" y="3" width="12" height="14" rx="2.5" />
+                <path d="M16 20.5H6.5A2.5 2.5 0 0 1 4 18V7" />
+              </svg>
+            </div>
+            <p class="empty-title">还没有记录</p>
+            <p class="empty-hint">复制文字、图片或富文本，会自动出现在这里</p>
+          </div>
+        </section>
+
+        <section class="preview-pane">
+          <div class="preview-placeholder" id="preview-placeholder">
+            <div class="empty-glyph">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="8" y="3" width="12" height="14" rx="2.5" />
+                <path d="M16 20.5H6.5A2.5 2.5 0 0 1 4 18V7" />
+              </svg>
+            </div>
+            <p class="empty-title">选择一条记录</p>
+            <p class="empty-hint">双击任意记录即可复制回剪贴板</p>
+          </div>
+          <div class="preview-content hidden" id="preview-content">
+            <div class="preview-head">
+              <span class="type-badge" id="pv-type"></span>
+              <span class="preview-meta" id="pv-meta"></span>
+              <div class="preview-actions">
+                <button id="pv-pin" class="btn">置顶</button>
+                <button id="pv-copy" class="btn btn-primary">复制</button>
+                <button id="pv-delete" class="btn btn-danger">删除</button>
+              </div>
+            </div>
+            <div class="preview-body" id="pv-body"></div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="statusbar">
+        <span id="stats"></span>
+        <span class="hints">
+          <span class="hint"><kbd>↑</kbd><kbd>↓</kbd> 浏览</span>
+          <span class="hint"><kbd>↵</kbd> 复制</span>
+          <span class="hint"><kbd>⌫</kbd> 删除</span>
+        </span>
+      </footer>
+    </div>
+
+    <!-- Settings modal -->
+    <div class="modal-overlay hidden" id="settings-modal">
+      <div class="modal">
+        <div class="modal-head">
+          <h2>设置</h2>
+          <button class="x" id="set-close" title="关闭">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="row-2">
+            <div class="field">
+              <label for="set-retention">记录保留时间</label>
+              <select id="set-retention" class="control">
+                <option value="24">24 小时</option>
+                <option value="72">3 天</option>
+                <option value="168">7 天</option>
+                <option value="720">30 天</option>
+                <option value="forever">永久保留</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="set-max">最大记录数</label>
+              <input id="set-max" class="control" type="number" min="10" max="1000" step="1" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="set-theme">主题</label>
+            <select id="set-theme" class="control">
+              <option value="system">跟随系统</option>
+              <option value="light">浅色</option>
+              <option value="dark">深色</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="switch">
+              <input type="checkbox" id="set-apply" />
+              <span class="track"></span>
+              <span class="label">同时应用到已有记录（从现在重新计时）</span>
+            </label>
+          </div>
+
+          <div class="field">
+            <label>数据目录</label>
+            <div class="path-row">
+              <code id="data-dir-path" class="path">…</code>
+              <button id="open-data-dir" class="ghost-btn">打开</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="dbg-formats">调试</label>
+            <button id="dbg-formats" class="ghost-btn">查看当前剪贴板格式</button>
+            <pre id="dbg-output" class="debug-output"></pre>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" id="set-cancel">取消</button>
+          <button class="btn btn-primary" id="set-save">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast hidden" id="toast"></div>
+  <script>
+  const q = new URLSearchParams(location.search);
+  const want = q.get("select");
+  if (want) {
+    const t = setInterval(() => {
+      const row = document.querySelector('.clip-item[data-id="' + want + '"]');
+      if (row) { clearInterval(t); row.click(); }
+    }, 60);
+  }
+  if (q.get("modal")) {
+    const t = setInterval(() => {
+      const btn = document.getElementById("settings-btn");
+      if (btn) { clearInterval(t); btn.click(); }
+    }, 60);
+  }
+  if (q.get("toast")) {
+    const paint = () => {
+      const t = document.getElementById("toast");
+      if (!t) return;
+      t.innerHTML = '<span>已删除</span><button class="toast-undo">撤销</button>';
+      t.classList.remove("hidden");
+    };
+    setInterval(paint, 40);
+  }
+</script>
+</body>
+</html>

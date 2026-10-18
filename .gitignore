@@ -33,3 +33,6 @@ crates-mirror.js
 
 # Build scratch used by local verification (never commit)
 .verify/
+
+# Headless Chrome profile used by design/shot.mjs
+.chrome-profile/

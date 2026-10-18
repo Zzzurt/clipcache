@@ -11,16 +11,22 @@
     <div class="app">
       <header class="toolbar">
         <div class="brand">
-          <span class="brand-dot"></span>
-          <span>ClipCache</span>
+          <span class="mark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="8" y="3" width="12" height="14" rx="2.5" />
+              <path d="M16 20.5H6.5A2.5 2.5 0 0 1 4 18V7" />
+            </svg>
+          </span>
+          <span class="wordmark">ClipCache</span>
         </div>
 
         <div class="search">
           <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <circle cx="11" cy="11" r="7"></circle>
-            <path d="M20 20l-3.5-3.5"></path>
+            <path d="M20 20l-3.6-3.6"></path>
           </svg>
-          <input id="search" type="text" placeholder="搜索剪贴板…" spellcheck="false" autocomplete="off" />
+          <input id="search" type="text" placeholder="搜索记录" spellcheck="false" autocomplete="off" />
+          <kbd>Ctrl K</kbd>
         </div>
 
         <nav class="filters" id="filters">
@@ -32,12 +38,12 @@
 
         <div class="actions">
           <button id="clear-btn" class="icon-btn" title="清空全部">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 7h16M9.5 7V4.8h5V7M6.5 7l.8 12.2h9.4L17.5 7"></path>
             </svg>
           </button>
           <button id="settings-btn" class="icon-btn" title="设置">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
@@ -46,13 +52,13 @@
 
         <div class="win-controls">
           <button id="win-min" class="win-btn" title="最小化">
-            <svg viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            <svg viewBox="0 0 10 10"><path d="M1 5h8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
           </button>
           <button id="win-max" class="win-btn" title="最大化">
-            <svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+            <svg viewBox="0 0 10 10"><rect x="1.1" y="1.1" width="7.8" height="7.8" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>
           </button>
           <button id="win-close" class="win-btn win-close" title="关闭">
-            <svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            <svg viewBox="0 0 10 10"><path d="M1.4 1.4l7.2 7.2M8.6 1.4L1.4 8.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
           </button>
         </div>
       </header>
@@ -61,10 +67,10 @@
         <section class="list-pane">
           <div class="list" id="list"></div>
           <div class="empty-state" id="empty-state">
-            <div class="empty-icon">
+            <div class="empty-glyph">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M9 4h6M9 4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2M9 4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2"/>
-                <path d="M9 11h6M9 15h6"/>
+                <rect x="8" y="3" width="12" height="14" rx="2.5" />
+                <path d="M16 20.5H6.5A2.5 2.5 0 0 1 4 18V7" />
               </svg>
             </div>
             <p class="empty-title">还没有记录</p>
@@ -74,13 +80,13 @@
 
         <section class="preview-pane">
           <div class="preview-placeholder" id="preview-placeholder">
-            <div class="empty-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                <circle cx="11" cy="11" r="7"></circle>
-                <path d="M20 20l-3.5-3.5"></path>
+            <div class="empty-glyph">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="8" y="3" width="12" height="14" rx="2.5" />
+                <path d="M16 20.5H6.5A2.5 2.5 0 0 1 4 18V7" />
               </svg>
             </div>
-            <p class="empty-title">选择一条记录查看详情</p>
+            <p class="empty-title">选择一条记录</p>
             <p class="empty-hint">双击任意记录即可复制回剪贴板</p>
           </div>
           <div class="preview-content hidden" id="preview-content">
@@ -100,53 +106,73 @@
 
       <footer class="statusbar">
         <span id="stats"></span>
-        <span class="status-hint">双击记录复制 · 过期记录自动清理</span>
+        <span class="hints">
+          <span class="hint"><kbd>↑</kbd><kbd>↓</kbd> 浏览</span>
+          <span class="hint"><kbd>↵</kbd> 复制</span>
+          <span class="hint"><kbd>⌫</kbd> 删除</span>
+        </span>
       </footer>
     </div>
 
     <!-- Settings modal -->
     <div class="modal-overlay hidden" id="settings-modal">
       <div class="modal">
-        <h2>设置</h2>
-        <div class="field">
-          <label for="set-retention">记录保留时间</label>
-          <select id="set-retention">
-            <option value="24">24 小时</option>
-            <option value="72">3 天</option>
-            <option value="168">7 天</option>
-            <option value="720">30 天</option>
-            <option value="forever">永久保留</option>
-          </select>
+        <div class="modal-head">
+          <h2>设置</h2>
+          <button class="x" id="set-close" title="关闭">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
         </div>
-        <div class="field">
-          <label for="set-max">最大记录数</label>
-          <input id="set-max" type="number" min="10" max="1000" step="1" />
-        </div>
-        <div class="field">
-          <label for="set-theme">主题</label>
-          <select id="set-theme">
-            <option value="system">跟随系统</option>
-            <option value="light">浅色</option>
-            <option value="dark">深色</option>
-          </select>
-        </div>
-        <div class="field field-check">
-          <input type="checkbox" id="set-apply" />
-          <label for="set-apply">同时应用到已有记录（从现在重新计时）</label>
-        </div>
-        <div class="field">
-          <label for="dbg-formats">调试：查看当前剪贴板格式（排查粘贴问题用）</label>
-          <button id="dbg-formats" class="btn">查看剪贴板格式</button>
-          <pre id="dbg-output" class="debug-output"></pre>
-        </div>
-        <div class="field">
-          <label>数据目录（记录与图片的存放位置）</label>
-          <div class="data-dir-row">
-            <code id="data-dir-path" class="data-dir-path">…</code>
-            <button id="open-data-dir" class="btn">打开目录</button>
+        <div class="modal-body">
+          <div class="row-2">
+            <div class="field">
+              <label for="set-retention">记录保留时间</label>
+              <select id="set-retention" class="control">
+                <option value="24">24 小时</option>
+                <option value="72">3 天</option>
+                <option value="168">7 天</option>
+                <option value="720">30 天</option>
+                <option value="forever">永久保留</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="set-max">最大记录数</label>
+              <input id="set-max" class="control" type="number" min="10" max="1000" step="1" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="set-theme">主题</label>
+            <select id="set-theme" class="control">
+              <option value="system">跟随系统</option>
+              <option value="light">浅色</option>
+              <option value="dark">深色</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="switch">
+              <input type="checkbox" id="set-apply" />
+              <span class="track"></span>
+              <span class="label">同时应用到已有记录（从现在重新计时）</span>
+            </label>
+          </div>
+
+          <div class="field">
+            <label>数据目录</label>
+            <div class="path-row">
+              <code id="data-dir-path" class="path">…</code>
+              <button id="open-data-dir" class="ghost-btn">打开</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="dbg-formats">调试</label>
+            <button id="dbg-formats" class="ghost-btn">查看当前剪贴板格式</button>
+            <pre id="dbg-output" class="debug-output"></pre>
           </div>
         </div>
-        <div class="modal-actions">
+        <div class="modal-foot">
           <button class="btn" id="set-cancel">取消</button>
           <button class="btn btn-primary" id="set-save">保存</button>
         </div>

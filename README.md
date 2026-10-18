@@ -2,7 +2,10 @@
 
 Windows 剪贴板管理器：自动记录复制的文字、图片与富文本，本地保存，可设定保留时间，到期自动清理。
 
-![ClipCache 界面](docs/screenshot.png)
+<p align="center">
+  <img src="docs/shots/light.png" width="49%" alt="ClipCache 浅色主题">
+  <img src="docs/shots/dark.png" width="49%" alt="ClipCache 深色主题">
+</p>
 
 ## 特性
 
@@ -11,6 +14,28 @@ Windows 剪贴板管理器：自动记录复制的文字、图片与富文本，
 - 保留时间可选 24 小时 / 3 天 / 7 天 / 30 天 / 永久，到期自动清理
 - 搜索、类型过滤、双击写回剪贴板、浅色 / 深色主题
 - 识别剪贴板隐私标记，密码管理器复制的内容不会被记录
+
+## 界面
+
+左侧列表按时间倒序排列，可以只看某一类内容；右侧预览按内容类型分别渲染：纯文本用等宽字体，富文本在沙箱里还原排版，图片直接显示原图。
+
+列表支持单击选中、双击复制、方向键浏览，`Enter` 复制、`Delete` 删除，`Ctrl K` 或 `Ctrl F` 直接跳到搜索框。
+
+浅色与深色两套主题跟随设置切换，也可以跟随系统（见设置里的「主题」）。
+
+<details>
+<summary>界面改版对照（v0.3 → v0.4）</summary>
+
+<br>
+
+<p align="center">
+  <img src="docs/shots/before-after-light.png" alt="浅色主题改版前后对比">
+  <img src="docs/shots/before-after-dark.png" alt="深色主题改版前后对比">
+</p>
+
+去掉了蓝色主色与卡片阴影，改用暖中性纸底、发丝线分层，全站只保留一种彩色（赤陶橙）用于选中与强调；预览正文收进居中的阅读栏。设计决策与色板见 [design/](design/README.md)。
+
+</details>
 
 ## 安装
 
@@ -69,6 +94,8 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
 两个写真实系统剪贴板的测试默认标记为 `#[ignore]`，需要时用 `cargo test -- --ignored` 运行。
+
+界面改版的设计稿、颜色令牌与截图脚本在 [design/](design/README.md)。
 
 ## 许可证
 

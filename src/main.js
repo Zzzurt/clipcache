@@ -180,7 +180,8 @@ function renderList() {
     item.dataset.id = c.id;
 
     const icon = document.createElement("div");
-    icon.className = "clip-icon";
+    icon.className =
+      "clip-icon" + (c.kind === "html" || c.kind === "rtf" ? " is-html" : "");
     if (c.kind === "image" && c.has_thumb) {
       const img = document.createElement("img");
       img.className = "clip-thumb";
@@ -261,6 +262,7 @@ function renderDetail(d) {
   $("preview-placeholder").classList.add("hidden");
   $("preview-content").classList.remove("hidden");
   $("pv-type").textContent = TYPE_LABEL[d.kind] || d.kind;
+  $("pv-type").dataset.kind = d.kind;
   $("pv-meta").textContent = `${relativeTime(d.created_at)} · ${fmtBytes(
     d.byte_size
   )}${d.source_app ? " · 来自 " + d.source_app : ""}`;
@@ -297,7 +299,10 @@ function renderDetail(d) {
     const cs = getComputedStyle(document.documentElement);
     const fg = cs.getPropertyValue("--text").trim() || "#1c1f26";
     const bg = cs.getPropertyValue("--surface").trim() || "#ffffff";
-    const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${previewCsp}"><style>html,body{background:${bg};}body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.6;margin:0;padding:16px;color:${fg};word-break:break-word;}</style></head><body>${d.html}</body></html>`;
+    // The iframe is a separate document, so it does not inherit the app's
+    // scrollbar styling either; without this its scrollbar renders as the
+    // platform default and looks bolted on next to the rest of the UI.
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${previewCsp}"><style>html,body{background:${bg};}body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.6;margin:0;padding:16px;color:${fg};word-break:break-word;}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background-color:color-mix(in srgb,${fg} 22%,transparent);border:3px solid transparent;border-radius:8px;background-clip:content-box}::-webkit-scrollbar-thumb:hover{background-color:color-mix(in srgb,${fg} 36%,transparent);background-clip:content-box}::-webkit-scrollbar-track{background:transparent}</style></head><body>${d.html}</body></html>`;
     iframe.srcdoc = doc;
     body.appendChild(iframe);
   } else if (d.text) {
@@ -531,6 +536,7 @@ function bindEvents() {
   $("clear-btn").addEventListener("click", clearAll);
   $("settings-btn").addEventListener("click", openSettings);
   $("set-cancel").addEventListener("click", closeSettings);
+  $("set-close").addEventListener("click", closeSettings);
   $("set-save").addEventListener("click", saveSettings);
   $("settings-modal").addEventListener("click", (e) => {
     if (e.target === $("settings-modal")) closeSettings();
