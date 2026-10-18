@@ -14,6 +14,7 @@
 | `design/shots/demo-modal.png` | 真实 exe 的设置弹窗 |
 | `design/shots/before-light.png` / `before-dark.png` | 改版前（`build-before.mjs` 从 git 历史重放） |
 | `design/shots/states.png` | 状态四宫格：弹窗 / 图片 / 窄窗 / toast |
+| `design/shots/icon-sheet.png` | 应用图标各尺寸对照（16–256px + 浅/深底色带） |
 | `design/mock/after.html` | 设计稿原型（自包含 CSS），保留三个色系变体 |
 
 `mock/before.html` 与 `mock/live.html` 由脚本生成、不入库（见下方出图流程）。
@@ -163,6 +164,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File design\grab.ps1 -Row 2 -Out 
 字体不变，仍是系统栈；唯一新增的是等宽字体栈 `--mono`（`Cascadia Code` 优先），给纯文本预览和数据目录用。
 
 **图标尺寸**：顶栏图标一律按「墨迹尺寸」对齐，而不是按 SVG 视区对齐。垃圾桶路径只占 18/24 视区，齿轮撑满 24/24，所以齿轮单独收到 `11px` 并加线宽到 `2.4`——两者实测墨迹都是 11×11 CSS px。这是 `src/index.html` 里原来 16px 齿轮和 16px 垃圾桶看起来"齿轮更大"的根因。
+
+## 应用图标
+
+应用图标和窗口里的 `.mark` 不是两套设计，是同一套：前一张便签 `rect(8,3,12,14,r2.5)`，后面那张只露左、下两条边（`M16 20.5H6.5A2.5 2.5 0 0 1 4 18V7`）。配色取 mark 徽标的 `--ink` 底 + `--surface` 线，**不用赤陶橙**——橙在界面里只表示选中/焦点/置顶，做成图标底色会让「全站只保留一种彩色用于强调」这条约束失效。
+
+```
+python design/make-icon.py            # 重出 src-tauri/icons/*（png / ico / icns / 磁贴）
+python design/make-icon.py --sheet    # 只重出 design/shots/icon-sheet.png
+```
+
+脚本用 Pillow 逐尺寸**单独排版**，不是从 1024 往下缩：
+
+- 线宽与两线间距按 glyph 原比例（各 2 单位）算，再给像素下限兜底（`TUNING`）。16px 时 1 个单位只有 0.62px，等比缩放会让线只剩 1.2px、两线之间也只有 1.2px，糊成一块黑；
+- glyph 占比随尺寸从 70%（16px）收敛到 66%（512px）；
+- `.ico` 每档塞自己渲染的 PNG（手写 ICONDIR），9 档：16/20/24/32/40/48/64/128/256。
+
+改图标时**别只改大图再让系统缩**——16px 的效果要单独看 `icon-sheet.png` 底部的色带。
 
 ## 实施时的落点
 

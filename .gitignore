@@ -45,3 +45,7 @@ design/mock/legacy-styles.css
 # Local design notes kept on disk only (never part of the shipped repo)
 /docs/0*.md
 /docs/README.md
+
+# Python bytecode from design/make-icon.py
+__pycache__/
+*.pyc
