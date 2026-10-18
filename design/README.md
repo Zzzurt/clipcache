@@ -9,15 +9,14 @@
 | --- | --- |
 | `docs/shots/before-after-light.png` | **浅色前后并排大图**（README 用） |
 | `docs/shots/before-after-dark.png` | **深色前后并排大图**（README 用） |
-| `design/shots/demo-light.png` | 真实 exe 渲染的浅色主界面（`docs/shots/light.png` 的来源） |
-| `design/shots/demo-dark.png` | 真实 exe 渲染的深色主界面（`docs/shots/dark.png` 的来源） |
+| `docs/shots/light.png` / `dark.png` | README 顶部的浅色 / 深色主界面（真实 exe） |
+| `docs/shots/richtext-fix.png` | 富文本配色修复前后对照 |
 | `design/shots/demo-modal.png` | 真实 exe 的设置弹窗 |
-| `design/shots/before-light.png` | 改版前（冻结快照 + fixture 渲染） |
-| `design/shots/before-dark.png` | 改版前深色 |
+| `design/shots/before-light.png` / `before-dark.png` | 改版前（`build-before.mjs` 从 git 历史重放） |
 | `design/shots/states.png` | 状态四宫格：弹窗 / 图片 / 窄窗 / toast |
-| `design/compare.html` | 完整设计说明长图（含决策、色板、三个变体） |
-| `design/mock/before.html` | 现状复刻页，引用冻结的 `legacy-index.html` + `legacy-styles.css` |
 | `design/mock/after.html` | 设计稿原型（自包含 CSS），保留三个色系变体 |
+
+`mock/before.html` 与 `mock/live.html` 由脚本生成、不入库（见下方出图流程）。
 
 `live.html` / `after.html` 支持 URL 参数，方便单独看某个状态：
 
@@ -37,7 +36,7 @@ after.html?variant=paper      变体 C：纸感（可叠加 &theme=dark）
 
 ```
 cd design
-node build-before.mjs                   # 冻结快照 + fixture → mock/before.html
+node build-before.mjs                   # git 历史里的旧版 src/ + fixture → mock/before.html
 node shot.mjs "mock/before.html?theme=light" shots/before-light.png
 node shot.mjs "mock/before.html?theme=dark"  shots/before-dark.png
 
@@ -45,6 +44,8 @@ node build-live.mjs                     # src/ + Tauri 桩 → mock/live.html
 node shot.mjs "mock/live.html?select=3" shots/live-light.png
 node check.mjs                          # 校验 id / class 覆盖
 ```
+
+> `build-before.mjs` 用 `git show 384f250:src/index.html` 取旧版，不保留副本文件——仓库里已有那份历史。
 
 > `shot.mjs` 带了 `--virtual-time-budget=8000`。去掉它，2s 轮询和异步 `invoke` 还没跑完就截图，预览区会是空的。这个值最初是 2500，但富文本 iframe 可能要到首次绘制之后才可见——同一个页面用 2500 拍出全白、用 8000 拍出正文，所以调大到 8000 才稳定。**预览区空白时先怀疑截图时机，别改渲染逻辑。**
 >
@@ -59,11 +60,11 @@ $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222"
 $env:CLIPCACHE_DATA_DIR = "$env:TEMP\cc-demo"
 start src-tauri\target\release\clipcache.exe
 
-node live.mjs "shots/demo-light.png" --row 1
-node live.mjs "shots/demo-modal.png" --row 1 --modal
+node live.mjs "shots/real-light.png" --id 3
+node live.mjs "shots/real-modal.png" --id 3 --modal
 ```
 
-`live.mjs` 连 `http://127.0.0.1:9222/json/list`，用 `Runtime.evaluate` 派发真实 `mousedown` + `click`，再用 `Page.captureScreenshot` 带 `clip.scale: 2` 出 2 倍图。不抢焦点、不受 z-order 影响，这是当前唯一可靠的交互式截图方式。
+`live.mjs` 连 `http://127.0.0.1:9222/json/list`，用 `Runtime.evaluate` 派发真实 `mousedown` + `click`，再用 `Page.captureScreenshot` 带 `clip.scale: 2` 出 2 倍图。不抢焦点、不受 z-order 影响，这是当前唯一可靠的交互式截图方式。用 `--id <clip id>` 选行比 `--row N` 稳，滚动后行号会变；端口可用 `CC_CDP_PORT` 覆盖。
 
 > 别用 `getCurrentWindow().setSize()` 改窗口尺寸——Tauri 2 的 ACL 默认不允许 `plugin:window|set_size`，会抛 `not allowed by ACL`。
 
@@ -94,7 +95,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File design\grab.ps1 -Row 2 -Out 
 | 质感 | 无 | 圆角收紧到 6px，logo 去投影 | 5% `feTurbulence` 纸纤维，预览标题转衬线 |
 | 深色 `--accent` | `#e08a5b` | `#d8d8de` | `#d99a63` |
 
-最终选了 **A 赤陶**。三个方向的并排图见 `docs/shots/before-after-*.png` 与 `mock/after.html?variant=`。
+最终选了 **A 赤陶**。三个方向可以直接在 `mock/after.html?variant=` 里切换对比（`neutral` / `paper`，可叠加 `&theme=dark`）。
 
 取舍：
 
@@ -170,7 +171,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File design\grab.ps1 -Row 2 -Out 
 - `src/index.html`：整文件重写，**所有元素 id 一个没动**。`.filters` 保留 `data-kind`；列表行从 `flex` 改成三列 `grid`；`.brand-dot` → `.mark` + `.wordmark`；状态栏右侧新增 `.hints`（纯 HTML，无 JS）；设置弹窗拆出 `.modal-head` / `.modal-body`，新增 `#set-close`。
 - `src/styles.css`：整文件重写（740 → 约 900 行），令牌、间距、发丝线、图标尺寸全部按本文档执行。`:root` 里保留了 `--text`（`#1b1a17`）作为 `--ink` 的别名——`main.js` 会用 `getPropertyValue("--text")` 给富文本沙箱 iframe 注入前景色，删掉它会白底黑字失效。
 - `src/main.js`：三处小改（`$("pv-type").dataset.kind = d.kind`、`icon.className` 追加 `is-html`、`$("set-close")` 绑 `closeSettings`）之外，另加了富文本配色的 `sanitiseRichText()`（见下节）。
-- `docs/screenshot.png`：已用真实渲染的浅色截图替换（1000×700）。
+- `docs/shots/light.png` / `dark.png`：README 顶部用的两张主界面截图，已取代旧的 `docs/screenshot.png`（后者随这次清理删除）。
 
 ## 富文本配色归一化
 
