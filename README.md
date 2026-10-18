@@ -2,6 +2,8 @@
 
 Windows 剪贴板管理器：自动记录复制的文字、图片与富文本，本地保存，可设定保留时间，到期自动清理。
 
+![ClipCache 界面](docs/screenshot.png)
+
 ## 特性
 
 - 记录纯文本、富文本（HTML / RTF）与图片，图片统一转存为 PNG
